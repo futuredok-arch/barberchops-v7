@@ -110,12 +110,14 @@ module.exports = function ownerRoutes(ctx) {
       today,
       shop: {
         name: s.name, tagline: s.tagline, address: s.address, phone: s.phone, bookingFee: s.bookingFee, cancelWindowHours: s.cancelWindowHours,
-        hours: s.hours, ownerEmail: s.ownerEmail, marketingPreTick: !!s.marketingPreTick, hasBoardPin: !!s.boardPinHash, remindersEnabled: s.remindersEnabled !== false,
+        hours: s.hours, ownerEmail: s.ownerEmail, marketingPreTick: !!s.marketingPreTick, hasBoardPin: !!s.boardPinHash, remindersEnabled: s.remindersEnabled !== false, googleReviewUrl: s.googleReviewUrl || '',
       },
       barbers: barbersFull(),
       services: db.raw.prepare('SELECT id,category,name,duration,price,note FROM services WHERE active = 1 ORDER BY sort').all(),
-      bookings: db.raw.prepare(`SELECT id,barber_id AS barberId,service_id AS serviceId,date,time,duration,customer_name AS customerName,phone,email,notes,status,fee_paid AS feePaid,needs_refund AS needsRefund,source FROM bookings WHERE date >= ? AND status IN ('upcoming','completed','no-show','cancelled') ORDER BY date,time`).all(from)
-        .map((b) => ({ ...b, feePaid: !!b.feePaid, needsRefund: !!b.needsRefund })),
+      bookings: db.raw.prepare(`SELECT id,barber_id AS barberId,service_id AS serviceId,date,time,duration,customer_name AS customerName,contact_name AS contactName,phone,email,notes,status,fee_paid AS feePaid,fee_cents AS feeCents,refunded_at AS refundedAt,needs_refund AS needsRefund,source FROM bookings WHERE date >= ? AND status IN ('upcoming','completed','no-show','cancelled') ORDER BY date,time`).all(from)
+        .map((b) => ({ ...b, feePaid: !!b.feePaid, needsRefund: !!b.needsRefund, refunded: !!b.refundedAt,
+          // an upcoming appointment that no longer fits its barber's schedule (day turned off, time blocked, hours changed)
+          conflict: b.status === 'upcoming' && b.date >= today ? sched.conflictReason(db, sched.getBarber(db, b.barberId), b.date, b.time, b.duration, db.getSetting('hours')) : null })),
       customers: customers(),
       blocked: db.raw.prepare('SELECT phone_norm AS norm, phone, name FROM blocked ORDER BY blocked_at DESC').all(),
       system: {
@@ -155,6 +157,7 @@ module.exports = function ownerRoutes(ctx) {
       if ('ownerEmail' in b) set('ownerEmail', V.cleanEmail(b.ownerEmail));
       if ('marketingPreTick' in b) set('marketingPreTick', b.marketingPreTick === true);
       if ('remindersEnabled' in b) set('remindersEnabled', b.remindersEnabled === true);
+      if ('googleReviewUrl' in b) set('googleReviewUrl', V.cleanReviewUrl(b.googleReviewUrl));
       audit(req, 'settings_changed', Object.keys(b).join(','));
       res.json({ ok: true });
     } catch (e) { next(e); }
@@ -311,13 +314,37 @@ module.exports = function ownerRoutes(ctx) {
     try {
       const status = V.oneOf((req.body || {}).status, ['completed', 'no-show', 'cancelled'], 'status');
       const id = V.cleanId(req.params.id);
-      const info = db.raw.prepare(`UPDATE bookings SET status = ? WHERE id = ? AND status IN ('upcoming')`).run(status, id);
+      const info = db.raw.prepare(`UPDATE bookings SET status = ?, completed_at = ? WHERE id = ? AND status IN ('upcoming')`).run(status, status === 'completed' ? clock.nowMs() : null, id);
       if (!info.changes) throw new V.HttpError(404, 'Appointment not found or already closed', 'not_found');
       res.json({ ok: true });
     } catch (e) { next(e); }
   });
   r.post('/owner/bookings/:id/refund-done', (req, res, next) => {
-    try { db.raw.prepare('UPDATE bookings SET needs_refund = 0 WHERE id = ?').run(V.cleanId(req.params.id)); res.json({ ok: true }); } catch (e) { next(e); }
+    try {
+      const id = V.cleanId(req.params.id);
+      db.raw.prepare(`UPDATE bookings SET needs_refund = 0, refunded_at = COALESCE(refunded_at, ?), refund_id = COALESCE(refund_id, 'manual') WHERE id = ?`).run(clock.nowMs(), id);
+      audit(req, 'refund_marked_done', id); res.json({ ok: true });
+    } catch (e) { next(e); }
+  });
+  // Move a client to another time (and/or barber). The booking fee travels with the appointment: the client never pays again or loses it.
+  r.post('/owner/bookings/:id/reschedule', (req, res, next) => {
+    try {
+      const b = req.body || {};
+      if (!isDate(b.date) || !isTime(b.time)) throw V.bad('That date or time is not valid');
+      const barberId = b.barberId && b.barberId !== 'any' ? V.cleanId(b.barberId, 'barber') : 'any';
+      const out = bookings.ownerReschedule(V.cleanId(req.params.id), { barberId, date: b.date, time: b.time, emailClient: b.emailClient !== false });
+      audit(req, 'appointment_moved', `${req.params.id} -> ${b.date} ${b.time} ${out.barberId}`);
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+  // Refund one booking fee through Stripe (needs a Stripe key that is allowed to write Refunds)
+  r.post('/owner/bookings/:id/refund', async (req, res, next) => {
+    try {
+      const id = V.cleanId(req.params.id);
+      const out = await bookings.refundFee(id);
+      audit(req, 'fee_refunded', `${id} $${(out.amountCents / 100).toFixed(2)} ${out.refundId}`);
+      res.json(out);
+    } catch (e) { next(e); }
   });
 
   /* ---------- blocked numbers + text opt-ins ---------- */

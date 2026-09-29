@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS audit (
 const DEFAULT_SETTINGS = {
   name: 'Barberchops', tagline: 'Quality Cuts', address: '4163 Merrick Rd, Massapequa, NY', phone: '516.799.2887',
   bookingFee: 5, cancelWindowHours: 12, hours: DEFAULT_HOURS, ownerEmail: '', marketingPreTick: true,
-  boardPinHash: null, remindersEnabled: true,
+  boardPinHash: null, remindersEnabled: true, googleReviewUrl: '',
 };
 
 function openDb(dataDir) {
@@ -99,6 +99,12 @@ function openDb(dataDir) {
   if (!cols.includes('group_id')) db.exec('ALTER TABLE bookings ADD COLUMN group_id TEXT');
   if (!cols.includes('contact_name')) db.exec("ALTER TABLE bookings ADD COLUMN contact_name TEXT NOT NULL DEFAULT ''");
   if (!cols.includes('service_price')) db.exec('ALTER TABLE bookings ADD COLUMN service_price INTEGER NOT NULL DEFAULT 0');
+  if (!cols.includes('completed_at')) db.exec('ALTER TABLE bookings ADD COLUMN completed_at INTEGER');
+  if (!cols.includes('review_sent_at')) db.exec('ALTER TABLE bookings ADD COLUMN review_sent_at INTEGER');
+  if (!cols.includes('manage_token')) db.exec('ALTER TABLE bookings ADD COLUMN manage_token TEXT');
+  if (!cols.includes('refunded_at')) db.exec('ALTER TABLE bookings ADD COLUMN refunded_at INTEGER');
+  if (!cols.includes('refund_id')) db.exec('ALTER TABLE bookings ADD COLUMN refund_id TEXT');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_bookings_manage ON bookings(manage_token)');
   db.exec('UPDATE bookings SET group_id = id WHERE group_id IS NULL');
   db.exec('CREATE INDEX IF NOT EXISTS idx_bookings_group ON bookings(group_id)');
 

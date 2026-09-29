@@ -333,7 +333,7 @@ async function multiSections({ browser, appA, appB, appC, expectHttp }) {
     const rowsText = await p.locator('.pay-row').allInnerTexts();
     ok(kids.every((k, i) => rowsText[i].includes(k.name)), 'rows are labelled with each child\'s name');
     const pay = await bodyText(p);
-    ok(/\$5 booking fee per appointment\. Each fee holds your spot in line and is non-refundable\. It is a separate booking fee and is NOT deducted from your service price\. The full service price is paid at the shop\./.test(pay), 'per-appointment fee microcopy is shown');
+    ok(/\$5 booking fee per appointment\. Each fee holds your spot in line and is non-refundable, except when you cancel at least 12 hours ahead\. It is a separate booking fee and is NOT deducted from your service price\. The full service price is paid at the shop\./.test(pay), 'per-appointment fee microcopy is shown');
     ok(/^pay \$20 now · reserve 4 appointments$/i.test((await payButton(p).innerText()).trim()), 'pay button reads "Pay $20 now · reserve 4 appointments"');
     await moneyClean(p, 'pay step with four appointments', { store: true });
     await noHScroll(p, 'four-kid pay step 390px');
@@ -623,8 +623,9 @@ async function main() {
       await landingServicesOk(cp, 'landing (dev-pay app)');
       { const lt = await bodyText(cp); ok(SERVICE_NAMES.every((n) => lt.includes(n)) && !lt.includes('Hot Lather'), 'service list is rendered from the server (old services are gone)'); }
       await moneyClean(cp, 'landing (dev-pay app)');
-      ok((await cp.locator('.footer-bottom button[data-action="go-staff"]').innerText()).includes('Team login'), 'discreet "Team login" link in the footer');
-      ok((await cp.locator('.footer-bottom button[data-action="go-board"]').count()) === 1, '"Shop screen" footer link exists');
+      ok((await cp.locator('.footer-bottom button[data-action="go-staff"]').innerText()).includes('Employees'), 'small "Employees" button in the footer');
+      ok((await cp.locator('.footer-bottom button[data-action="go-board"]').innerText()).trim() === 'TV', '"TV" footer button exists');
+      eq(await cp.locator('.hero [data-action="go-staff"], .hero [data-action="go-board"], .hero [data-action="go-owner"]').count(), 0, 'Employees/TV buttons are not in the Book Now area');
       await shot(cp, '01-mobile-home-top');
       await cp.locator('#app .team-grid').scrollIntoViewIfNeeded();
       await cp.evaluate(() => window.scrollBy(0, -120));
@@ -655,7 +656,9 @@ async function main() {
       // validation
       await cp.locator('.wiz-nav .btn-primary').click();
       ok((await bodyText(cp)).includes('Please enter your full name'), 'info step validates the name');
-      ok((await bodyText(cp)).includes('10-digit US phone'), 'info step validates the phone number');
+      ok((await bodyText(cp)).includes('A phone number is required so the shop can reach you'), 'phone number is mandatory: empty is refused with a clear reason');
+      ok((await cp.locator('#f_w_phone').getAttribute('required')) !== null, 'phone field is marked required');
+      ok((await cp.locator('label[for="f_w_phone"]').innerText()).toLowerCase().includes('required'), 'phone label says required');
       await fillInfo(cp, { name: 'Jordan "JD" O\'Neil & Sons', phone: bookingPhone, email: 'jordan@example.com', notes: 'skin fade, keep the top' });
       await noHScroll(cp, 'info step 390px');
       await shot(cp, '04-mobile-info-step');
@@ -663,7 +666,7 @@ async function main() {
       await cp.waitForSelector('[data-action="book"]');
       const payText = await bodyText(cp);
       ok(payText.includes('$5') && /non-refundable/.test(payText) && payText.includes('12 hours'), 'pay step explains the $5 fee and the 12-hour cancel window');
-      ok(/\$5 booking fee per appointment\. Each fee holds your spot in line and is non-refundable\. It is a separate booking fee and is NOT deducted from your service price\. The full service price is paid at the shop\./.test(payText), 'pay step: the fee is NOT deducted from the service price; the full price is paid at the shop');
+      ok(/\$5 booking fee per appointment\. Each fee holds your spot in line and is non-refundable, except when you cancel at least 12 hours ahead\. It is a separate booking fee and is NOT deducted from your service price\. The full service price is paid at the shop\./.test(payText), 'pay step: the fee is NOT deducted from the service price; the full price is paid at the shop');
       await totalsOk(cp, 'single-appointment checkout', { store: '$35', now: '$5', n: 1 });
       ok(/^pay \$5 now · reserve 1 appointment$/i.test((await payButton(cp).innerText()).trim()), 'single appointment: button reads "Pay $5 now · reserve 1 appointment"');
       await moneyClean(cp, 'info + pay steps (dev-pay app)', { store: true });
@@ -810,6 +813,32 @@ async function main() {
       const jpeg = Buffer.from(await (await fetch(A + pub.photo)).arrayBuffer());
       ok(jpeg[0] === 0xff && jpeg[1] === 0xd8, 'uploaded profile photo is a real JPEG');
       await shot(op, '09-owner-team-manage', { fullPage: false });
+      // Days Working + custom hours: toggles are a draft, the grid hides off days, one Save changes button saves both
+      const dayBtn = (k) => card.locator(`[data-action="o-day"][data-k="${k}"]`);
+      await card.locator('[data-change="o-toggle-custom"]').check();
+      await card.locator('.hours-grid-mini').waitFor();
+      eq(await card.locator('.hours-grid-mini .hours-row b').allInnerTexts(), ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], 'custom hours grid lists every working day');
+      await dayBtn(1).click(); await dayBtn(2).click();
+      eq([await dayBtn(1).getAttribute('aria-pressed'), await dayBtn(2).getAttribute('aria-pressed')], ['false', 'false'], 'Monday and Tuesday toggled off');
+      eq(await card.locator('.hours-grid-mini .hours-row b').allInnerTexts(), ['Sun', 'Wed', 'Thu', 'Fri', 'Sat'], 'custom hours grid hides days that are switched off');
+      ok((await card.innerText()).includes('Unsaved changes'), 'card says there are unsaved changes');
+      const before = await fetch(A + '/api/availability?service=s1&barber=' + samId + '&days=14').then((r) => r.json());
+      ok(before.days.some((d) => [1, 2].includes(new Date(d.date + 'T00:00:00Z').getUTCDay()) && d.slots.length > 0), 'nothing is saved until Save changes is pressed');
+      await card.locator('.hours-row:has(b:text-is("Wed")) select').first().selectOption('11');
+      await card.locator('.hours-row:has(b:text-is("Wed")) select').nth(1).selectOption('16');
+      await card.locator('[data-action="o-save-changes"]').click();
+      await card.locator('.notice:has-text("Saved.")').waitFor();
+      ok((await card.locator('.notice').first().innerText()).includes('working days and custom hours are updated'), 'brief confirmation shown after saving');
+      const saved = (await fetch(A + '/api/public').then((r) => r.json()));
+      const av = await fetch(A + '/api/availability?service=s1&barber=' + samId + '&days=14').then((r) => r.json());
+      ok(av.days.filter((d) => [1, 2].includes(new Date(d.date + 'T00:00:00Z').getUTCDay())).every((d) => d.slots.length === 0), 'no bookable times on the barber\u2019s saved days off');
+      const wed = av.days.find((d) => new Date(d.date + 'T00:00:00Z').getUTCDay() === 3);
+      ok(wed.slots.length > 0 && wed.slots[0].time === '11:00' && wed.slots[wed.slots.length - 1].time === '15:30', 'the custom Wednesday hours (11 to 4) were saved in the same click');
+      // put everything back
+      await dayBtn(1).click(); await dayBtn(2).click();
+      await card.locator('[data-action="o-save-changes"]').click();
+      await until(async () => !(await card.innerText()).includes('Unsaved changes') && (await dayBtn(2).getAttribute('aria-pressed')) === 'true', 'days working restored');
+      await card.locator('[data-change="o-toggle-custom"]').uncheck();
       await card.locator('[data-action="o-manage"]').click();
     });
 
@@ -1232,6 +1261,150 @@ async function main() {
       await ctx.close();
     });
 
+    /* ============================================================== customer cancel / reschedule link + owner refund */
+    await section('customer: cancel or reschedule from the email link; owner: Refund button and call/text links', async () => {
+      const { paidEvent, TOMORROW } = require('./helpers');
+      const email = 'manage.mom@example.com';
+      const api_ = appA.client();
+      const made = await api_.post('/api/bookings', { name: 'Maya Kessler', phone: '(516) 555-0199', email, notes: '', optIn: false, appointments: [
+        { serviceId: 's2', barberId: 'b7', date: TOMORROW, time: '17:30', forName: 'Noa' }, { serviceId: 's2', barberId: 'b8', date: TOMORROW, time: '17:30', forName: 'Eli' }] });
+      eq(made.status, 200, 'two-appointment order created');
+      const rows = appA.db.raw.prepare(`SELECT * FROM bookings WHERE email = ? ORDER BY rowid`).all(email);
+      eq((await appA.sendWebhook(appA.client(), paidEvent('evt_e2e_manage', rows[0].id, rows[0].stripe_session_id, 1000))).status, 200, 'the $10 payment is confirmed');
+      await appA.ctx.mailer.flush();
+      const mail = appA.fakeMail.sent.find((m) => m.to[0] === email && /CANCEL OR RESCHEDULE/.test(m.text));
+      ok(!!mail && mail.subject === 'Your appointment is confirmed', 'confirmation email is sent with the subject "Your appointment is confirmed"');
+      const tok = /\?manage=([A-Za-z0-9_-]+)/.exec(mail.text)[1];
+      ok(mail.text.includes('Noa') && mail.text.includes('Eli'), 'email lists both children’s appointments');
+
+      const ctx = await newContext(browser);
+      const p = await ctx.newPage();
+      await p.goto(A + '/?manage=' + tok);
+      await p.waitForSelector('.cart-item[data-appt]');
+      eq(await p.locator('.cart-item[data-appt]').count(), 2, 'the manage page lists both appointments');
+      ok(!(new URL(p.url())).search, 'the secret link is removed from the address bar');
+      const t0 = await bodyText(p);
+      ok(!t0.includes('555-0199') && !t0.includes(email) && !t0.includes('Kessler'), 'no phone, email or last name on the manage page');
+      ok(/refunds the \$5 booking fee/.test(t0) && !/deposit/i.test(t0), 'policy is explained in plain words, never "deposit"');
+      await noHScroll(p, 'manage page 390px'); await noInlineHandlers(p, 'manage page');
+      await shot(p, '19-mobile-manage-page', { fullPage: true });
+
+      // reschedule the first appointment
+      const first = p.locator('.cart-item[data-appt]').nth(0);
+      const firstId = await first.getAttribute('data-appt'), secondId = await p.locator('.cart-item[data-appt]').nth(1).getAttribute('data-appt');
+      const rowOf = (id) => appA.db.raw.prepare('SELECT * FROM bookings WHERE id = ?').get(id);
+      const before1 = rowOf(firstId), before2 = rowOf(secondId);
+      await first.locator('[data-action="mg-open"][data-k="reschedule"]').click();
+      await p.waitForSelector('.slot-grid');
+      await shot(p, '20-mobile-manage-reschedule', { fullPage: true });
+      eq(await p.locator('[data-action="mg-move"]').isDisabled(), true, 'Move button waits for a time to be picked');
+      const newTime = await p.locator('.slot-btn').nth(1).getAttribute('data-time');
+      await p.locator('.slot-btn').nth(1).click();
+      await p.locator('[data-action="mg-move"]').click();
+      await p.waitForSelector('.notice:has-text("Done. Your appointment moved")');
+      const moved = rowOf(firstId);
+      ok(moved.time === newTime && moved.status === 'upcoming' && moved.fee_paid === 1 && moved.barber_id === before1.barber_id, 'appointment moved to ' + newTime + ' with the same barber; fee stays paid ' + JSON.stringify({ t: moved.time, s: moved.status, f: moved.fee_paid, b: moved.barber_id }));
+
+      // cancel the second appointment (on time): refund is promised, only that appointment is cancelled
+      const second = p.locator('.cart-item[data-appt]').nth(1);
+      await second.locator('[data-action="mg-open"][data-k="cancel"]').click();
+      ok((await second.innerText()).includes('will be refunded to the card you paid with'), 'cancel confirmation says the $5 will be refunded');
+      await shot(p, '21-mobile-manage-cancel', { fullPage: true });
+      await second.locator('[data-action="mg-cancel"]').click();
+      await p.waitForSelector('.notice:has-text("Your appointment is cancelled")');
+      ok((await bodyText(p)).includes('booking fee will be refunded'), 'confirmation of the cancel names the refund');
+      eq([rowOf(firstId).status, rowOf(secondId).status], ['upcoming', 'cancelled'], 'only the second appointment is cancelled');
+      eq([rowOf(firstId).needs_refund, rowOf(secondId).needs_refund], [0, 1], 'and only its $5 is flagged for refund');
+      ok((await p.locator('.cart-item[data-appt]').nth(1).innerText()).toLowerCase().includes('cancelled'), 'the page shows it as cancelled');
+      await ctx.close();
+
+      // an unknown link gets a calm message
+      const ctx2 = await newContext(browser);
+      const p2 = await ctx2.newPage();
+      expectHttp(404, '/api/manage');
+      await p2.goto(A + '/?manage=' + 'z'.repeat(30));
+      await p2.waitForSelector('text=We couldn’t find that booking');
+      ok(true, 'an unknown manage link shows a calm "couldn’t find that booking" page');
+      await ctx2.close();
+
+      // owner: Needs refund banner, one-tap Refund through Stripe, call / text links
+      await op.locator('[data-action="o-refresh"]').click();
+      await op.locator('[data-action="o-tab"][data-k="today"]').click();
+      await op.waitForSelector('.notice-error:has-text("Refund needed")');
+      const banner = await op.locator('.notice-error:has-text("Refund needed")').first().innerText();
+      ok(banner.includes(before2.customer_name) && /booked by Maya Kessler/.test(banner) && /555-0199/.test(banner) && /\$5 booking fee/.test(banner), 'refund banner names the client, phone and the $5 fee');
+      await shot(op, '22-owner-refund-banner', { fullPage: false });
+      await op.locator('.notice-error:has-text("Refund needed") [data-action="o-ask"]').first().click();
+      ok((await bodyText(op)).includes('Refund $5 to their card now?'), 'Refund asks for one confirmation first');
+      const refundsBefore = appA.fakeStripe.refunds.length;
+      await op.locator('[data-action="o-refund"]').first().click();
+      await op.waitForSelector('.notice:has-text("Refunded through Stripe")');
+      eq(appA.fakeStripe.refunds.length, refundsBefore + 1, 'exactly one refund was sent to Stripe');
+      eq(appA.fakeStripe.refunds[appA.fakeStripe.refunds.length - 1].amount, '500', 'for exactly $5.00 (one booking fee, not the $10 order)');
+      ok(!(await bodyText(op)).includes('Refund needed: Maya'), 'the refund banner is gone once refunded');
+      await appA.ctx.mailer.flush();
+      ok(appA.fakeMail.sent.some((m) => m.to[0] === email && /booking fee was refunded/.test(m.subject)), 'the customer is emailed that the fee was refunded');
+      await op.locator('[data-action="o-tab"][data-k="customers"]').click();
+      await op.waitForSelector('a[href^="tel:"]');
+      ok((await op.locator('.tbl-wrap a[href^="tel:"]').count()) > 0 && (await op.locator('.tbl-wrap a[href^="sms:"]').count()) > 0, 'customers list has tap-to-call and tap-to-text links');
+    });
+
+    /* ============================================================== schedule changed too late + owner Reschedule button */
+    await section('owner: a day switched off after people booked is flagged; Reschedule moves the client and keeps the $5', async () => {
+      const { paidEvent, TOMORROW } = require('./helpers');
+      const email = 'ruth.adler@example.com';
+      const made = await appA.client().post('/api/bookings', { name: 'Ruth Adler', phone: '(516) 555-0177', email, notes: '', optIn: false, appointments: [{ serviceId: 's1', barberId: 'b6', date: TOMORROW, time: '15:00' }] });
+      eq(made.status, 200, 'booking made with barber b6');
+      const row0 = appA.db.raw.prepare('SELECT * FROM bookings WHERE email = ?').get(email);
+      eq((await appA.sendWebhook(appA.client(), paidEvent('evt_e2e_ruth', row0.id, row0.stripe_session_id, 500))).status, 200, '$5 paid');
+      const dow = new Date(TOMORROW + 'T00:00:00Z').getUTCDay();
+
+      // the owner logs back in (the previous section leaves the session alone; if it ended, sign in again)
+      await op.locator('[data-action="o-refresh"]').click();
+      await op.locator('[data-action="o-tab"][data-k="team"]').click();
+      const card = op.locator('.tcard[data-barber="b6"]');
+      await card.waitFor();
+      await card.locator(`[data-action="o-day"][data-k="${dow}"]`).click();
+      await card.locator('[data-action="o-save-changes"]').click();
+      await card.locator('.notice:has-text("Heads up")').waitFor();
+      ok((await card.locator('.notice').first().innerText()).includes('Needs a new time'), 'saving a day off warns that booked appointments no longer fit');
+      eq(appA.db.raw.prepare('SELECT status FROM bookings WHERE id = ?').get(row0.id).status, 'upcoming', 'the booking is not cancelled automatically');
+
+      await op.locator('[data-action="o-tab"][data-k="today"]').click();
+      const banner = op.locator('.notice-error:has-text("Needs a new time")');
+      await banner.first().waitFor();
+      const bt = await banner.first().innerText();
+      ok(/Ruth Adler/.test(bt) && /555-0177/.test(bt) && /off that day/.test(bt) && /booking fee/.test(bt), 'banner names the client, phone, the reason, and that the fee is kept');
+      ok((await banner.first().locator('a[href^="tel:"]').count()) === 1 && (await banner.first().locator('a[href^="sms:"]').count()) === 1, 'banner has Call and Text buttons');
+      await shot(op, '23-owner-needs-new-time', { fullPage: false });
+      await banner.first().locator('[data-action="o-rs-open"]').click();
+      await op.waitForSelector('.rs-panel .slot-grid');
+      ok((await op.locator('.rs-panel').innerText()).includes('booking fee moves with them'), 'panel says the booking fee moves with the client');
+      await shot(op, '24-owner-reschedule-panel', { fullPage: false });
+      eq(await op.locator('[data-action="o-rs-move"]').isDisabled(), true, 'Move button waits until a time is picked');
+      await op.locator('.rs-panel [data-action="o-rs-barber"][data-k="any"]').click();
+      await op.waitForSelector('.rs-panel .slot-grid');
+      await op.locator(`.rs-panel .day-btn[data-date="${TOMORROW}"]`).click();
+      await op.locator('.rs-panel .slot-btn[data-time="15:00"]').click();
+      await op.locator('[data-action="o-rs-move"]').click();
+      await op.waitForSelector('.notice:has-text("Moved Ruth Adler")');
+      const moved = appA.db.raw.prepare('SELECT * FROM bookings WHERE id = ?').get(row0.id);
+      ok(moved.barber_id !== 'b6' && moved.date === TOMORROW && moved.time === '15:00' && moved.status === 'upcoming' && moved.fee_paid === 1 && moved.fee_cents === 500, 'moved to another barber at 3:00 PM; the $5 stays paid: ' + JSON.stringify({ b: moved.barber_id, t: moved.time }));
+      ok(!(await bodyText(op)).includes('Needs a new time: Ruth'), 'the alert is gone after the move');
+      await appA.ctx.mailer.flush();
+      ok(appA.fakeMail.sent.some((m) => m.to[0] === email && /We moved your appointment/.test(m.subject)), 'Ruth is emailed her new time');
+      // owner card view: Reschedule button on a normal appointment
+      await op.locator(`.cal-day[data-k="${TOMORROW}"]`).click();
+      await op.waitForSelector('.appt-card:has-text("Ruth Adler")');
+      ok((await op.locator('.appt-card:has-text("Ruth Adler") [data-action="o-rs-open"]').count()) === 1, 'every upcoming appointment card has a Reschedule button');
+      ok((await op.locator('.appt-card:has-text("Ruth Adler") a[href^="tel:"]').count()) >= 1 && (await op.locator('.appt-card:has-text("Ruth Adler") a[href^="sms:"]').count()) === 1, 'and Call / Text buttons for a late or no-show client');
+      // restore the barber's day
+      await op.locator('[data-action="o-tab"][data-k="team"]').click();
+      await card.locator(`[data-action="o-day"][data-k="${dow}"]`).click();
+      await card.locator('[data-action="o-save-changes"]').click();
+      await card.locator('.notice:has-text("Saved.")').waitFor();
+    });
+
     /* ============================================================== owner session expiry */
     await section('owner session expiry sends the owner back to sign-in', async () => {
       await ownCtx.clearCookies();
@@ -1248,12 +1421,12 @@ async function main() {
       await p.goto(A + '/'); await p.waitForSelector('.footer-bottom');
       await p.locator('[data-action="go-staff"]').click();
       await p.waitForSelector('text=Team sign-in');
-      ok(p.url().endsWith('#staff'), 'Team login link goes to #staff');
+      ok(p.url().endsWith('#staff'), 'Employees button goes to #staff');
       await p.locator('[data-action="go-home"]').first().click();
       await p.waitForSelector('.hero');
       await p.locator('[data-action="go-board"]').click();
       await p.waitForSelector('form[data-submit="board-login"]');
-      ok(p.url().endsWith('#board'), 'Shop screen link goes to #board');
+      ok(p.url().endsWith('#board'), 'TV button goes to #board');
       // expired/unknown invite link
       expectHttp(404, '/api/staff/setup-info');
       await p.goto(A + '/?staff=' + 'x'.repeat(40));

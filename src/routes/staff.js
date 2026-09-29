@@ -86,7 +86,7 @@ module.exports = function staffRoutes(ctx) {
       const id = V.cleanId(req.params.id);
       const row = db.raw.prepare('SELECT id FROM bookings WHERE id = ? AND barber_id = ? AND status = ?').get(id, req.barberId, 'upcoming');
       if (!row) throw new V.HttpError(404, 'Appointment not found', 'not_found');
-      db.raw.prepare('UPDATE bookings SET status = ? WHERE id = ?').run(status, id);
+      db.raw.prepare('UPDATE bookings SET status = ?, completed_at = ? WHERE id = ?').run(status, status === 'completed' ? clock.nowMs() : null, id);
       res.json({ ok: true });
     } catch (e) { next(e); }
   });

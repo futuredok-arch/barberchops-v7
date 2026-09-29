@@ -107,6 +107,26 @@ module.exports = function publicRoutes(ctx) {
       confirmation: appts[0].confirmation, feeCents: first.fee_cents,
     });
   });
+  /* ---- customer self-service (link in the confirmation email) ---- */
+  r.get('/manage', (req, res) => {
+    const v = bookings.manageView(String(req.query.m || ''));
+    if (!v) return res.status(404).json({ error: 'We couldn’t find that booking. The link may be old.', code: 'not_found' });
+    res.json(v);
+  });
+  r.post('/manage/cancel', limits.booking, (req, res, next) => {
+    try {
+      const b = req.body || {};
+      res.json(bookings.cancelByCustomer(String(b.m || ''), V.cleanId(b.id)));
+    } catch (e) { next(e); }
+  });
+  r.post('/manage/reschedule', limits.booking, (req, res, next) => {
+    try {
+      const { isDate, isTime } = require('../clock');
+      const b = req.body || {};
+      if (!isDate(b.date) || !isTime(b.time)) throw V.bad('That date or time is not valid');
+      res.json(bookings.rescheduleByCustomer(String(b.m || ''), V.cleanId(b.id), b.date, b.time));
+    } catch (e) { next(e); }
+  });
   r.post('/bookings/cancel-pending', (req, res) => {
     bookings.cancelPending(String((req.body || {}).t || ''));
     res.json({ ok: true });

@@ -50,4 +50,13 @@ function csvSafe(v) {
   return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
-module.exports = { HttpError, bad, cleanText, optText, normPhone, cleanPhone, cleanEmail, cleanInt, oneOf, cleanId, cleanLabel, csvSafe };
+// A Google review link: blank (feature off) or an https:// web address
+function cleanReviewUrl(v) {
+  const s = String(v == null ? '' : v).trim();
+  if (!s) return '';
+  if (s.length > 300 || /\s/.test(s)) throw bad('That review link is not valid.');
+  let u; try { u = new URL(s); } catch { throw bad('That review link is not valid. Paste the full address starting with https://'); }
+  if (u.protocol !== 'https:' || !u.hostname.includes('.') || u.username || u.password) throw bad('The review link must be a secure address starting with https://');
+  return u.toString();
+}
+module.exports = { HttpError, bad, cleanReviewUrl, cleanText, optText, normPhone, cleanPhone, cleanEmail, cleanInt, oneOf, cleanId, cleanLabel, csvSafe };

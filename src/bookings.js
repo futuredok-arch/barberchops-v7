@@ -3,6 +3,7 @@ const { randomId, randomToken, sha256 } = require('./security');
 const { HttpError, bad } = require('./validate');
 const { addDays } = require('./clock');
 const sched = require('./schedule');
+const { rowsByManageToken } = require('./manage');
 
 const MAX_ITEMS_PER_ORDER = 6;          // appointments in one checkout (e.g. a parent booking for several kids)
 const MAX_PENDING_PER_PHONE = 8;
@@ -80,7 +81,7 @@ function makeBookings({ db, clock, payments, notify, config }) {
     if (!needsPay) { notify.orderConfirmed(rows); return { token, status: 'confirmed', count: rows.length, feeTotalCents: 0 }; }
     if (!payments.enabled) return { token, status: 'pending', checkoutUrl: `/dev-pay?t=${encodeURIComponent(token)}`, dev: true, count: rows.length, feeTotalCents: totalCents };
     try {
-      const session = await payments.createCheckout({ bookings: rows, feeCents: fee, groupId, token, shopName: db.getSetting('name') });
+      const session = await payments.createCheckout({ bookings: rows, feeCents: fee, groupId, token, shopName: db.getSetting('name'), cancelWindowHours: db.getSetting('cancelWindowHours') });
       db.raw.prepare('UPDATE bookings SET stripe_session_id = ? WHERE group_id = ?').run(session.id, groupId);
       return { token, status: 'pending', checkoutUrl: session.url, count: rows.length, feeTotalCents: totalCents };
     } catch (e) {
@@ -145,6 +146,113 @@ function makeBookings({ db, clock, payments, notify, config }) {
     return db.raw.prepare('SELECT * FROM bookings WHERE token_hash = ?').get(sha256(token)) || null;
   }
 
-  return { createOnline, createManual, finalize, finalizeGroup, groupRows, groupByToken, expireHolds, cancelPending, byToken, bookingRow, feeCents, getService };
+  /* ---------- customer self-service: cancel or reschedule from the link in the email ---------- */
+  const windowMs = () => Math.max(0, Number(db.getSetting('cancelWindowHours') || 0)) * 3600e3;
+  function policyFor(b) {
+    const start = clock.toUtcMs(b.date, b.time), now = clock.nowMs();
+    const live = b.status === 'upcoming' && start > now;
+    return { live, onTime: live && start - now >= windowMs() };
+  }
+  const notFound = () => new HttpError(404, 'We couldn’t find that appointment. The link may be old.', 'not_found');
+  function manageView(token) {
+    const rows = rowsByManageToken(db, token);
+    if (!rows.length) return null;
+    const svc = new Map(db.raw.prepare('SELECT id,name FROM services').all().map((s) => [s.id, s.name]));
+    const bar = new Map(db.raw.prepare('SELECT id,name FROM barbers').all().map((x) => [x.id, x.name]));
+    const first = (n) => String(n || '').trim().split(/\s+/)[0] || '';
+    const s = db.settings();
+    return {
+      shop: { name: s.name, phone: s.phone, cancelWindowHours: s.cancelWindowHours, bookingFee: s.bookingFee },
+      contactFirstName: first(rows[0].contact_name || rows[0].customer_name),
+      appointments: rows.filter((b) => b.status !== 'pending' && b.status !== 'expired').map((b) => {
+        const p = policyFor(b);
+        return {
+          id: b.id, serviceId: b.service_id, service: svc.get(b.service_id) || '', barberId: b.barber_id, barber: bar.get(b.barber_id) || '',
+          date: b.date, time: b.time, firstName: first(b.customer_name), status: b.status,
+          canCancel: p.live, canReschedule: p.onTime, feePaid: !!b.fee_paid && !b.needs_refund && !b.refunded_at && b.fee_cents > 0, feeCents: b.fee_cents,
+        };
+      }),
+    };
+  }
+  function ownedAppt(token, id) {
+    const rows = rowsByManageToken(db, token);
+    const b = rows.find((r) => r.id === id);
+    if (!b) throw notFound();
+    return b;
+  }
+  // Cancel one appointment. At least the cancel window ahead: the slot is freed and, if a booking fee was paid, it is flagged
+  // for the owner to refund. Inside the window: the slot is still freed but the fee is kept.
+  function cancelByCustomer(token, id) {
+    const done = db.raw.transaction(() => {
+      const b = ownedAppt(token, id);
+      const p = policyFor(b);
+      if (!p.live) throw new HttpError(409, 'That appointment can’t be changed here anymore. Please call the shop.', 'not_manageable');
+      const refund = p.onTime && !!b.fee_paid && b.fee_cents > 0;
+      db.raw.prepare(`UPDATE bookings SET status = 'cancelled', needs_refund = ? WHERE id = ? AND status = 'upcoming'`).run(refund ? 1 : 0, b.id);
+      return { row: bookingRow(b.id), refund, feeKept: !p.onTime && !!b.fee_paid && b.fee_cents > 0 };
+    });
+    const r = done();
+    notify.appointmentCancelled(r.row, r);
+    return { ok: true, refund: r.refund, feeKept: r.feeKept };
+  }
+  // Move one appointment to a new time with the same barber. Only outside the cancel window. The booking fee travels with it (no new charge).
+  function rescheduleByCustomer(token, id, date, time) {
+    const done = db.raw.transaction(() => {
+      const b = ownedAppt(token, id);
+      const p = policyFor(b);
+      if (!p.live) throw new HttpError(409, 'That appointment can’t be changed here anymore. Please call the shop.', 'not_manageable');
+      if (!p.onTime) throw new HttpError(409, `It’s less than ${db.getSetting('cancelWindowHours')} hours before this appointment. Please call the shop to change it.`, 'too_late');
+      if (!dateOk(date)) throw bad('That date is not available');
+      if (date === b.date && time === b.time) throw bad('Pick a different time than your current one.');
+      const barber = sched.getBarber(db, b.barber_id);
+      if (!barber || !barber.active) throw new HttpError(409, 'That barber isn’t available. Please call the shop.', 'slot_taken');
+      db.raw.prepare(`UPDATE bookings SET status = 'cancelled' WHERE id = ?`).run(b.id);   // step out of our own way; rolled back if the new slot is taken
+      if (!sched.isSlotFree(db, clock, shopHours(), barber, date, time, b.duration)) throw new HttpError(409, 'That time was just taken. Please pick another.', 'slot_taken');
+      db.raw.prepare(`UPDATE bookings SET status = 'upcoming', date = ?, time = ?, reminded_at = NULL WHERE id = ?`).run(date, time, b.id);
+      return { before: { date: b.date, time: b.time }, row: bookingRow(b.id) };
+    });
+    const r = done();
+    notify.appointmentMoved(r.row, r.before);
+    return { ok: true, date: date, time: time };
+  }
+
+  // Owner moves a client (barber was sick, no-show, schedule changed too late...). Works for upcoming and no-show appointments.
+  // The same booking row moves, so its paid fee goes with it. The new time must be a genuinely free slot for the chosen barber.
+  function ownerReschedule(id, { barberId, date, time, emailClient }) {
+    const done = db.raw.transaction(() => {
+      const b = bookingRow(id);
+      if (!b) throw new HttpError(404, 'Appointment not found', 'not_found');
+      if (!['upcoming', 'no-show'].includes(b.status)) throw new HttpError(409, 'Only upcoming or no-show appointments can be moved.', 'not_manageable');
+      if (!dateOk(date)) throw bad('That date is not available');
+      const service = getService(b.service_id) || { duration: b.duration };
+      db.raw.prepare(`UPDATE bookings SET status = 'cancelled' WHERE id = ?`).run(b.id);   // step out of our own way; rolled back on any error
+      let target = barberId === 'any' || !barberId ? sched.assignBarber(db, clock, shopHours(), date, time, b.duration) : barberId;
+      const barber = target ? sched.getBarber(db, target) : null;
+      if (!barber || !barber.active || !sched.isSlotFree(db, clock, shopHours(), barber, date, time, b.duration)) throw new HttpError(409, 'That time isn’t free for that barber. Pick another time or barber.', 'slot_taken');
+      db.raw.prepare(`UPDATE bookings SET status = 'upcoming', barber_id = ?, date = ?, time = ?, reminded_at = NULL, completed_at = NULL, review_sent_at = NULL WHERE id = ?`).run(barber.id, date, time, b.id);
+      return { before: { date: b.date, time: b.time, barberId: b.barber_id }, row: bookingRow(b.id) };
+    });
+    const r = done();
+    if (emailClient) notify.movedByShop(r.row, r.before);
+    return { ok: true, date: r.row.date, time: r.row.time, barberId: r.row.barber_id, emailed: !!(emailClient && r.row.email) };
+  }
+
+  // Owner presses "Refund" on a paid booking fee: refund exactly that one fee through Stripe.
+  async function refundFee(id) {
+    const b = bookingRow(id);
+    if (!b) throw new HttpError(404, 'Appointment not found', 'not_found');
+    if (!b.fee_paid || !(b.fee_cents > 0)) throw new HttpError(409, 'No booking fee was paid for this appointment.', 'nothing_to_refund');
+    if (b.refunded_at) throw new HttpError(409, 'This booking fee was already refunded.', 'already_refunded');
+    if (!payments.enabled) throw new HttpError(409, 'Stripe isn’t connected here. Refund it in your Stripe dashboard, then press “Already refunded”.', 'stripe_off');
+    if (!b.stripe_payment_intent) throw new HttpError(409, 'This payment can’t be matched to Stripe automatically. Refund it in your Stripe dashboard, then press “Already refunded”.', 'no_payment_intent');
+    let r;
+    try { r = await payments.refund({ paymentIntent: b.stripe_payment_intent, amountCents: b.fee_cents, bookingId: b.id }); }
+    catch (e) { throw new HttpError(502, 'Stripe couldn’t refund this: ' + String((e && e.message) || 'unknown error').slice(0, 160), 'stripe_error'); }
+    db.raw.prepare('UPDATE bookings SET refunded_at = ?, refund_id = ?, needs_refund = 0 WHERE id = ?').run(clock.nowMs(), r.id, b.id);
+    notify.feeRefunded(bookingRow(b.id));
+    return { ok: true, refundId: r.id, amountCents: b.fee_cents };
+  }
+
+  return { manageView, cancelByCustomer, rescheduleByCustomer, ownerReschedule, refundFee, createOnline, createManual, finalize, finalizeGroup, groupRows, groupByToken, expireHolds, cancelPending, byToken, bookingRow, feeCents, getService };
 }
 module.exports = { makeBookings, HOLD_MINUTES, MAX_ITEMS_PER_ORDER };

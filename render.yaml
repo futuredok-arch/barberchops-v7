@@ -27,4 +27,4 @@ services:
       - key: REQUIRE_PAYMENT   # "false" = bookings are free to make until Stripe is connected. Change to "true" once Stripe is set up.
         value: false
       # Added later in Render's dashboard (Environment page), never here:
-      #   BASE_URL, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, MAIL_API_KEY, MAIL_FROM
+      #   BASE_URL, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, RESEND_API_KEY, MAIL_FROM

@@ -57,7 +57,7 @@ On the TV's browser open `https://your-address/#board` (or tap **Shop screen** a
 ## Part 3: Stripe (the $5 fee)
 
 1. Create an account at stripe.com and finish **activating** it (business details, bank account for payouts). Stripe handles that; this app never sees any of it.
-2. **API key:** Developers, API keys. Best practice: create a **Restricted key** with only *Checkout Sessions: Write*, then copy it into Render as `STRIPE_SECRET_KEY`. (Copying the standard "Secret key" also works.)
+2. **API key:** Developers, API keys. Best practice: create a **Restricted key** with only *Checkout Sessions: Write* and *Refunds: Write* (the second one lets the **Refund** button on your owner page work), then copy it into Render as `STRIPE_SECRET_KEY`. (Copying the standard "Secret key" also works.)
 3. **Webhook:** Developers, Webhooks, **Add endpoint**.
    - Endpoint URL: `https://book.barberchops.com/webhooks/stripe`
    - Events: `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.expired`
@@ -65,18 +65,26 @@ On the TV's browser open `https://your-address/#board` (or tap **Shop screen** a
 4. **Apple Pay:** Settings, Payment methods: make sure Cards and Apple Pay/Google Pay are on. Stripe's own payment page shows them automatically on supported phones.
 5. **Switch payment on:** in Render, Environment, change `REQUIRE_PAYMENT` from `false` to `true` and save. From then on, a booking is only confirmed after the $5 is paid.
 6. **Test first:** In Stripe switch to *Test mode*, use the test keys, and book with card `4242 4242 4242 4242` (any future date, any CVC). Check that the booking shows up and the emails arrive. Then switch to live keys and update both Render settings.
-7. **Refunds:** If someone pays but the time was taken a moment before (rare), the booking is flagged **Needs refund** in your dashboard and you get an email. Refund it in Stripe with one click.
+7. **Refunds:** When a booking fee is due back, it shows in a red **Refund needed** box at the top of your owner page (Bookings tab) and you get an email. That happens when a customer cancels at least 12 hours ahead from their email link, or when someone pays but the time was taken a moment before (rare). Press **Refund $5**, confirm, and the app refunds exactly that one booking fee through Stripe and emails the customer. You can also press **Refund** on any paid appointment card. If you refunded it in Stripe yourself, press **Already refunded in Stripe**.
 
 ---
 
 ## Part 4: Email (Resend)
 
 1. Create an account at resend.com, **Domains, Add Domain** for `barberchops.com`, and add the DNS records it shows (same place as Part 2).
-2. **API Keys, Create** (sending access only) and put it in Render as `MAIL_API_KEY`.
+2. **API Keys, Create** (sending access only) and put it in Render as `RESEND_API_KEY`.
 3. Set `MAIL_FROM` to something like `Barberchops <bookings@barberchops.com>`.
 4. In the owner **Settings**, press **Send test email** to confirm. If email is down, messages wait in a queue and retry automatically, so nothing is lost.
 
 ---
+
+## Cancel or reschedule link, review requests, calling clients
+
+- **Cancel or reschedule:** every confirmation and reminder email has a private link. Customers can move each appointment to another time with the same barber (their booking fee goes with it, nothing more to pay) or cancel it. At least 12 hours ahead (the number is your Cancel window in Settings), a cancel is flagged for you to refund. Inside that window they can still cancel to free the chair, but the fee is kept and rescheduling is blocked (they call the shop). Each appointment in a multi-appointment order is handled separately.
+- **Google review requests:** in Owner, Settings, paste your Google review link. About 2 hours after you press **Complete** on an appointment, the client gets one email asking for a review (never more than one every 30 days, and only between 9 AM and 8 PM). Leave the link blank to turn it off.
+- **Schedule changed after people booked?** Turning a day off, blocking time, or shortening hours never cancels anyone behind your back. Instead, a red **Needs a new time** box appears at the top of the Bookings tab for every appointment that no longer fits, with Call, Text and **Reschedule** buttons, and a heads-up shows right when you save the change.
+- **Reschedule button (owner):** on every upcoming or no-show appointment, and in that red box. Pick the same barber, another barber, or Any barber, then a day and time. The booking fee moves with the client (no new charge, nothing lost), and they get an email with the new time (you can untick that if you called them).
+- **Phone number is required** at checkout. On your owner page, every appointment and every customer has one-tap **Call** and **Text** buttons, so you can reach someone who is late or a no-show. Barbers and the TV never see phone numbers.
 
 ## Text list (Textedly) and marketing consent
 
@@ -92,7 +100,7 @@ On the TV's browser open `https://your-address/#board` (or tap **Shop screen** a
 - Passwords and PINs are stored only as salted scrypt hashes. Sign-in sessions are random tokens in HttpOnly, Secure cookies. Lockouts after repeated wrong tries. Cross-site request checks. A strict content-security policy blocks injected scripts.
 - All secrets live only in Render's environment. Nothing secret is in the code or the browser.
 - Photos: JPEG only, size-limited, served so browsers can't run them as code.
-- An independent attack test against the running server (auth bypass, data leaks, injection, cross-site tricks, forged Stripe payment messages, double-booking races, file uploads) found no exploitable problems. 22 automated safety tests and a 150-check browser test run on every change (`npm test`, `npm run e2e`).
+- An independent attack test against the running server (auth bypass, data leaks, injection, cross-site tricks, forged Stripe payment messages, double-booking races, file uploads) found no exploitable problems. Automated safety tests and a browser test of every screen run on every change (`npm test`, `npm run e2e`).
 
 **Honest limits.** The database file sits on Render's persistent disk and is not additionally encrypted by the app, so anyone who controls your Render account can reach it. Protect your Render, GitHub, Stripe and email accounts with **two-factor authentication**, and use a unique password for each. Keep your owner password private and change it if a staff member who knew it leaves.
 
@@ -107,6 +115,6 @@ On the TV's browser open `https://your-address/#board` (or tap **Shop screen** a
 ```
 npm install
 npm start          # http://localhost:3000, uses a fake payment page and no emails
-npm test           # 22 safety tests
+npm test           # automated safety tests
 npm run e2e        # full browser test (needs Playwright's Chromium)
 ```

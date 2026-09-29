@@ -146,7 +146,8 @@ body.owner-mode #app{max-width:1180px}
 .footer-bottom{margin-top:26px;padding-top:16px;border-top:1px solid var(--line);display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--ink-faint);align-items:center}
 .footer-bottom a,.footer-bottom button{color:var(--ink-faint);font-size:12px;text-decoration:none;background:none;border:none;padding:0 4px;min-height:var(--tap);display:inline-flex;align-items:center}
 .footer-bottom a:hover,.footer-bottom button:hover{color:var(--gold);text-decoration:underline}
-.footer-links{display:flex;gap:6px;flex-wrap:wrap}
+.footer-links{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.footer-bottom .footer-links button{border:1px solid var(--line);border-radius:999px;padding:0 14px;font-size:12px;font-weight:600;letter-spacing:.04em}
 
 /* ---------- wizard ---------- */
 .wizard{display:grid;grid-template-columns:1fr;gap:6px;padding-top:12px}
@@ -512,3 +513,5 @@ body.board-mode.board-gate #app{height:auto;display:block;overflow:visible;paddi
 .lost-list{margin:8px 0 0;padding-left:18px;font-weight:400}
 .lost-list li{padding:2px 0}
 .confirm-appt .summary-row{padding:3px 0}
+
+a.icon-btn{text-decoration:none;display:inline-flex;align-items:center;justify-content:center}

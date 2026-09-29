@@ -31,8 +31,10 @@ function loadConfig(env = process.env) {
       protocol: env.STRIPE_API_PROTOCOL || '',
     },
     mail: {
-      apiKey: env.MAIL_API_KEY || '',
-      from: env.MAIL_FROM || '',
+      // RESEND_API_KEY is the Resend key; MAIL_API_KEY still works as an older name
+      apiKey: env.RESEND_API_KEY || env.MAIL_API_KEY || '',
+      // Resend's shared test sender works before your own domain is verified (it can only deliver to your own Resend account email)
+      from: env.MAIL_FROM || 'Barberchops <onboarding@resend.dev>',
       apiUrl: env.MAIL_API_URL || 'https://api.resend.com/emails',
     },
     disableJobs: bool(env.DISABLE_JOBS, false),

@@ -37,6 +37,19 @@ function hoursFor(barber, date, shopHours) {
 function works(db, barber, date, shopHours) {
   return !!shopHoursFor(shopHours, date) && !barber.daysOff.includes(dowOf(date)) && !hasDayOff(db, barber.id, date);
 }
+// Why an EXISTING appointment no longer fits the barber's schedule (null = it fits). Used to warn the owner
+// when Days Working / time off / hours change after people already booked.
+function conflictReason(db, barber, date, time, duration, shopHours) {
+  if (!barber || !barber.active) return 'barber_removed';
+  if (barber.daysOff.includes(dowOf(date))) return 'day_off';
+  if (hasDayOff(db, barber.id, date)) return 'time_off';
+  const hrs = shopHoursFor(shopHours, date) && hoursFor(barber, date, shopHours);
+  if (!hrs) return 'shop_closed';
+  const s = toMins(time), e = s + duration;
+  if (s < hrs.open * 60 || e > hrs.close * 60) return 'outside_hours';
+  if (blockedRanges(db, barber.id, date).some((x) => s < x.end && e > x.start)) return 'time_off';
+  return null;
+}
 function busyRanges(db, clock, barberId, date) {
   const rows = db.raw.prepare(
     `SELECT time, duration FROM bookings WHERE barber_id = ? AND date = ?
@@ -97,4 +110,4 @@ function availability(db, clock, shopHours, { barberId, duration, days = 14 }) {
   return out;
 }
 
-module.exports = { loadBarbers, getBarber, slotsFor, isSlotFree, assignBarber, availability, hasDayOff, blockedRanges, hoursFor, works, shopHoursFor, timeoffFor, MAX_DAYS_AHEAD, LEAD_MINUTES };
+module.exports = { conflictReason, loadBarbers, getBarber, slotsFor, isSlotFree, assignBarber, availability, hasDayOff, blockedRanges, hoursFor, works, shopHoursFor, timeoffFor, MAX_DAYS_AHEAD, LEAD_MINUTES };

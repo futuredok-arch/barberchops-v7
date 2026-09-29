@@ -11,7 +11,7 @@ if (config.production) {
   if (problems.length) { console.error('Refusing to start:\n - ' + problems.join('\n - ')); process.exit(1); }
   if (config.requirePayment && !config.stripe.secretKey) console.warn('WARNING: STRIPE_SECRET_KEY is not set, so online booking will be refused until it is.');
   if (config.stripe.secretKey && !config.stripe.webhookSecret) console.warn('WARNING: STRIPE_WEBHOOK_SECRET is not set: payments cannot be confirmed.');
-  if (!config.mail.apiKey) console.warn('WARNING: MAIL_API_KEY is not set: booking emails will wait in the outbox.');
+  if (!config.mail.apiKey) console.warn('WARNING: RESEND_API_KEY is not set: booking emails will wait in the outbox until it is added.');
 }
 
 const server = app.listen(config.port, () => console.log(`Barberchops booking listening on :${config.port} (${config.nodeEnv})`));

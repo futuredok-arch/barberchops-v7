@@ -133,6 +133,25 @@ function createApp(envOverrides = {}) {
     }
     return n;
   }
+  // One review request per completed appointment: sent 2 to 72 hours after it was marked completed, only between
+  // 9 AM and 8 PM shop time, only when a Google review link is set, and never more than one per customer email every 30 days.
+  const REVIEW_DELAY_MS = 2 * 3600e3, REVIEW_MAX_AGE_MS = 72 * 3600e3, REVIEW_GAP_MS = 30 * 86400e3;
+  function runReviewRequests() {
+    const url = db.getSetting('googleReviewUrl');
+    if (!url) return 0;
+    const now = clock.nowMs();
+    const hour = clock.parts(now).minutes / 60;
+    if (hour < 9 || hour >= 20) return 0;
+    const rows = db.raw.prepare(`SELECT * FROM bookings WHERE status = 'completed' AND email != '' AND review_sent_at IS NULL AND completed_at IS NOT NULL AND completed_at <= ? AND completed_at >= ? ORDER BY completed_at`)
+      .all(now - REVIEW_DELAY_MS, now - REVIEW_MAX_AGE_MS);
+    let n = 0;
+    for (const b of rows) {
+      const recent = db.raw.prepare('SELECT 1 FROM bookings WHERE lower(email) = lower(?) AND review_sent_at IS NOT NULL AND review_sent_at > ?').get(b.email, now - REVIEW_GAP_MS);
+      if (!recent && notify.reviewRequest(b)) n++;
+      db.raw.prepare('UPDATE bookings SET review_sent_at = ? WHERE id = ?').run(now, b.id);   // mark either way so we never retry or send late
+    }
+    return n;
+  }
   function housekeeping() {
     bookings.expireHolds();
     db.raw.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(clock.nowMs());
@@ -144,10 +163,11 @@ function createApp(envOverrides = {}) {
   if (!config.disableJobs) {
     timers.push(setInterval(() => { try { housekeeping(); } catch (e) { console.error('housekeeping', e.message); } }, 60e3));
     timers.push(setInterval(() => { try { runReminders(); } catch (e) { console.error('reminders', e.message); } }, 10 * 60e3));
+    timers.push(setInterval(() => { try { runReviewRequests(); } catch (e) { console.error('review requests', e.message); } }, 10 * 60e3));
     timers.forEach((t) => t.unref());
   }
 
-  return { app, ctx, config, db, clock, runReminders, housekeeping, close() { timers.forEach(clearInterval); db.close(); } };
+  return { app, ctx, config, db, clock, runReminders, runReviewRequests, housekeeping, close() { timers.forEach(clearInterval); db.close(); } };
 }
 
 module.exports = { createApp };

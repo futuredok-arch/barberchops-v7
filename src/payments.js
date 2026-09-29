@@ -15,7 +15,7 @@ function makePayments(config) {
     enabled,
     webhookConfigured: !!config.stripe.webhookSecret,
     // One line item PER appointment, each exactly one booking fee (the service price is never sent to Stripe).
-    async createCheckout({ bookings, feeCents, groupId, token, shopName }) {
+    async createCheckout({ bookings, feeCents, groupId, token, shopName, cancelWindowHours = 12 }) {
       const first = bookings[0];
       const session = await stripe.checkout.sessions.create({
         mode: 'payment',
@@ -25,7 +25,7 @@ function makePayments(config) {
             currency: 'usd', unit_amount: feeCents,
             product_data: {
               name: `Booking fee — ${fmtDateLong(b.date)} at ${fmtTime(b.time)}${bookings.length > 1 ? ` (${b.customer_name.trim().split(/\s+/)[0]})` : ''}`,
-              description: 'Booking fee to hold your spot in line. Non-refundable. NOT deducted from your service: the full price of your service is still paid at the shop.',
+              description: `Booking fee to hold your spot in line. Non-refundable, except when you cancel at least ${cancelWindowHours} hours ahead. NOT deducted from your service: the full price of your service is still paid at the shop.`,
             },
           },
         })),
@@ -38,6 +38,13 @@ function makePayments(config) {
         expires_at: Math.floor(Date.now() / 1000) + 31 * 60,
       });
       return { id: session.id, url: session.url };
+    },
+    // Refund (part of) a payment. One booking fee at a time; the idempotency key means pressing the button twice can never refund twice.
+    async refund({ paymentIntent, amountCents, bookingId }) {
+      const r = await stripe.refunds.create(
+        { payment_intent: paymentIntent, amount: amountCents, reason: 'requested_by_customer', metadata: { booking_id: bookingId } },
+        { idempotencyKey: `refund-${bookingId}` });
+      return { id: r.id, status: r.status };
     },
     constructEvent(rawBody, signature) {
       return stripe.webhooks.constructEvent(rawBody, signature, config.stripe.webhookSecret);

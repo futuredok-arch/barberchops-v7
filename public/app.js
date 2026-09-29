@@ -158,6 +158,7 @@
       html = topbar();
       if (route === 'home') html += viewHome();
       else if (route === 'pay') html += viewPay();
+      else if (route === 'manage') html += viewManage();
       else if (route === 'staff') html += viewStaff();
       else if (route === 'board') html += viewBoardGate();
       else if (route === 'owner') html += viewOwner();
@@ -176,6 +177,7 @@
   }
   function pageTitle() {
     var n = shopName();
+    if (S.route === 'manage') return 'Your appointments · ' + n;
     if (S.route === 'staff') return 'Team · ' + n;
     if (S.route === 'board') return 'Shop screen · ' + n;
     if (S.route === 'owner') return 'Owner · ' + n;
@@ -363,7 +365,7 @@
       '<div class="ticket-card">' +
         '<h3>' + (on ? 'Why the fee?' : 'How it works') + '</h3>' +
         '<div class="ticket-row"><span>Walk-in</span><span class="amt">Free &mdash; first come, first served</span></div>' +
-        (on ? '<div class="ticket-row"><span>Reserved time</span><span class="amt">' + esc(fee) + ' booking fee per appointment &mdash; holds your spot in line, non-refundable. Not deducted from your service.</span></div>' +
+        (on ? '<div class="ticket-row"><span>Reserved time</span><span class="amt">' + esc(fee) + ' booking fee per appointment &mdash; holds your spot in line, non-refundable unless you cancel at least ' + esc(shop.cancelWindowHours) + ' hours ahead. Not deducted from your service.</span></div>' +
               '<div class="ticket-row"><span>At the shop</span><span class="amt">Full price of your service</span></div>' +
               '<div class="ticket-row"><span>Late cancel / no-show</span><span class="amt">' + esc(fee) + ' forfeited per appointment</span></div>'
             : '<div class="ticket-row"><span>Reserved time</span><span class="amt">Your chair, your time</span></div>') +
@@ -407,7 +409,7 @@
       '<div><h4>Hours</h4><p>' + hl.map(function (l) { return esc(l.label) + ' &nbsp; ' + esc(l.text); }).join('<br>') + '<br>Last walk-in 30 min before close</p></div>' +
       '<div><h4>Follow</h4><p><a href="https://www.instagram.com/barberchops/" target="_blank" rel="noopener noreferrer">Instagram</a><br><a href="https://www.facebook.com/barbershopsNY" target="_blank" rel="noopener noreferrer">Facebook</a></p></div>' +
       '</div><div class="footer-bottom"><span>&copy; ' + esc(shop.name) + ' &middot; Massapequa, NY</span>' +
-      '<span class="footer-links"><button type="button" data-action="go-staff">Team login</button><button type="button" data-action="go-board">Shop screen</button><button type="button" data-action="go-owner">Owner</button></span></div></footer>';
+      '<span class="footer-links"><button type="button" data-action="go-staff">Employees</button><button type="button" data-action="go-board">TV</button><button type="button" data-action="go-owner">Owner</button></span></div></footer>';
 
     return hero + trust + team + prices + foot;
   }
@@ -707,7 +709,7 @@
       (w.err ? notice('error', esc(w.err)) : '') +
       inp('w.name', { label: 'Full name', ph: 'Jordan Smith', attrs: 'autocomplete="name" maxlength="80" required', err: e.name }) +
       '<div class="field-row">' +
-        inp('w.phone', { label: 'Phone', type: 'tel', ph: '(516) 555-0100', attrs: 'autocomplete="tel" inputmode="tel" maxlength="20" required', err: e.phone }) +
+        inp('w.phone', { label: 'Phone number (required)', type: 'tel', ph: '(516) 555-0100', attrs: 'autocomplete="tel" inputmode="tel" maxlength="20" required aria-required="true"', hint: 'Required. The shop only uses it to reach you if you’re running late or something changes with your appointment.', err: e.phone }) +
         inp('w.email', { label: 'Email (optional)', type: 'email', ph: 'you@email.com', attrs: 'autocomplete="email" inputmode="email" maxlength="120"', err: e.email }) +
       '</div>' +
       inp('w.notes', { label: 'Notes for your barber (optional)', type: 'textarea', ph: 'e.g. skin fade, keep the top length', rows: 2, max: 300 }) +
@@ -723,7 +725,8 @@
     var digits = phone.replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
     if (!w.cart.length) { w.err = 'Add an appointment first.'; render(); return; }
     if (name.length < 2) errs.name = 'Please enter your full name.';
-    if (digits.length !== 10) errs.phone = 'Enter a 10-digit US phone number.';
+    if (!phone) errs.phone = 'A phone number is required so the shop can reach you.';
+    else if (digits.length !== 10) errs.phone = 'Enter a 10-digit US phone number.';
     if (email && !/^[^\s@<>"',;]+@[^\s@<>"',;]+\.[^\s@<>"',;]{2,}$/.test(email)) errs.email = 'That email address doesn’t look right.';
     w.errs = errs; w.err = '';
     if (Object.keys(errs).length) { render(); var first = document.querySelector('.field-error'); if (first && first.previousElementSibling) first.previousElementSibling.focus(); return; }
@@ -751,7 +754,7 @@
     var summary = '<div class="summary-box"><div class="summary-title">' + (n === 1 ? 'Your appointment' : 'Your ' + n + ' appointments') + '</div>' + rows +
       '<div class="totals" role="group" aria-label="Totals">' + store + now + visit + '</div></div>';
     var policy = on
-      ? '<div class="policy-note"><b>' + esc(fee) + ' booking fee per appointment.</b> Each fee holds your spot in line and is non-refundable. It is a separate booking fee and is NOT deducted from your service price. The full service price is paid at the shop. Cancel or reschedule an appointment at least ' + esc(shop.cancelWindowHours) + ' hours ahead to avoid forfeiting its fee. Late cancellations and no-shows forfeit the fee. Walk-ins remain welcome any time at no charge.</div>'
+      ? '<div class="policy-note"><b>' + esc(fee) + ' booking fee per appointment.</b> Each fee holds your spot in line and is non-refundable, except when you cancel at least ' + esc(shop.cancelWindowHours) + ' hours ahead. It is a separate booking fee and is NOT deducted from your service price. The full service price is paid at the shop. Your confirmation email has a link to cancel or reschedule any appointment yourself: cancelling at least ' + esc(shop.cancelWindowHours) + ' hours ahead refunds its fee, and rescheduling keeps it. Late cancellations and no-shows forfeit the fee. Walk-ins remain welcome any time at no charge.</div>'
       : '<div class="policy-note"><b>Nothing is charged online.</b> The full service price is paid at the shop. Please call at least ' + esc(shop.cancelWindowHours) + ' hours ahead if you need to change your time. Walk-ins are always welcome.</div>';
     var secure = on ? '<div class="secure-note">' + svgLock() + '<span>You’ll pay on Stripe’s own secure page &mdash; card, Apple Pay and Google Pay all work there. Your card details never touch this site.</span></div>' : '';
     var idle = on ? 'Pay ' + esc(fmtMoney(feeTotal(n))) + ' now &middot; reserve ' + apptWord(n) : (n > 1 ? 'Confirm ' + n + ' appointments' : 'Confirm booking');
@@ -952,6 +955,146 @@
   A['pay-recheck'] = function () {
     var p = S.pay; if (!p) return;
     p.phase = 'polling'; p.startedAt = performance.now(); p.limit = 20000; render(); pollPay();
+  };
+
+
+  /* =====================================================================
+     MANAGE — the customer's own cancel / reschedule page (link in the confirmation email)
+     ===================================================================== */
+  function initManage(token) {
+    S.route = 'manage';
+    try { history.replaceState(null, '', location.pathname); } catch (e) { /* ignore */ }
+    S.mg = { phase: 'loading', token: token, data: null, open: null, avail: null, availLoading: false, date: null, time: null, busy: false, flash: null, err: '' };
+    render();
+    return loadManage();
+  }
+  function loadManage() {
+    var m = S.mg;
+    return api('GET', '/api/manage?m=' + encodeURIComponent(m.token)).then(function (r) {
+      if (S.route !== 'manage' || S.mg !== m) return;
+      if (r.ok) { m.phase = 'ready'; m.data = r.data; } else m.phase = 'notfound';
+      render();
+    });
+  }
+  function mgFind(id) { var m = S.mg; return m && m.data ? m.data.appointments.filter(function (a) { return a.id === id; })[0] : null; }
+  function viewManage() {
+    var m = S.mg; if (!m) return '';
+    if (m.phase === 'loading') return '<div class="center-stage" role="status">' + spinner('spinner-lg') + '<p class="step-hint">Loading your appointments…</p></div>';
+    if (m.phase === 'notfound') {
+      return '<div class="center-stage"><h2 class="step-title">We couldn’t find that booking</h2>' + notice('error', 'This link may be old or incomplete. Use the link in your latest confirmation email, or call the shop.') +
+        '<div class="row-actions"><button type="button" class="btn btn-primary" data-action="go-home">Back to site</button></div></div>';
+    }
+    var d = m.data, shop = d.shop, win = esc(shop.cancelWindowHours), many = d.appointments.length > 1;
+    var phoneLink = shop.phone ? '<a href="tel:' + esc(safeTel(shop.phone)) + '">' + esc(shop.phone) + '</a>' : 'the shop';
+    var cards = d.appointments.map(function (a) { return mgCard(a, shop, many, phoneLink); }).join('');
+    var anyUpcoming = d.appointments.some(function (a) { return a.canCancel; });
+    return '<div class="wizard" style="grid-template-columns:1fr"><div class="panel">' +
+      '<h2 class="step-title">Your ' + (many ? 'appointments' : 'appointment') + '</h2>' +
+      '<p class="step-hint">Hi ' + esc(d.contactFirstName || 'there') + '. Move or cancel ' + (many ? 'each appointment' : 'your appointment') + ' below. For changes inside ' + win + ' hours, call ' + phoneLink + '.</p>' +
+      (m.flash ? notice(m.flash.kind, esc(m.flash.text)) : '') +
+      (cards || '<div class="empty-note">There are no appointments on this link.</div>') +
+      (anyUpcoming ? '<div class="policy-note"><b>How changes work.</b> Rescheduling keeps the same barber and your booking fee &mdash; there is nothing more to pay online. Cancelling at least ' + win + ' hours ahead refunds the ' + esc(fmtMoney(shop.bookingFee)) + ' booking fee. Inside ' + win + ' hours you can still cancel to free the chair, but the booking fee is kept. The full service price is always paid at the shop.</div>' : '') +
+      '<div class="row-actions"><button type="button" class="btn btn-ghost" data-action="go-home">Back to site</button></div></div></div>';
+  }
+  function mgCard(a, shop, many, phoneLink) {
+    var m = S.mg, win = esc(shop.cancelWindowHours), open = m.open && m.open.id === a.id ? m.open : null;
+    var head = '<div class="cart-head"><div class="cart-main"><div class="cart-svc">' + esc(a.service) + (many && a.firstName ? ' &middot; ' + esc(a.firstName) : '') + '</div>' +
+      '<div class="cart-meta">with ' + esc(a.barber) + '</div>' +
+      '<div class="cart-meta num">' + esc(fmtDateLong(a.date)) + ' at ' + esc(fmtTime(a.time)) + '</div></div>' +
+      (a.status !== 'upcoming' ? '<span class="pill pill-' + esc(a.status) + '">' + esc(a.status.replace('-', ' ')) + '</span>' : '') + '</div>';
+    var actions = '';
+    if (a.canCancel && !open) {
+      actions = '<div class="row-actions" style="margin-top:12px">' +
+        (a.canReschedule ? '<button type="button" class="btn btn-primary btn-sm" data-action="mg-open" data-id="' + esc(a.id) + '" data-k="reschedule">Reschedule</button>' : '') +
+        '<button type="button" class="btn btn-ghost btn-sm" data-action="mg-open" data-id="' + esc(a.id) + '" data-k="cancel">Cancel appointment</button></div>' +
+        (a.canReschedule ? '' : '<div class="hint">This appointment is less than ' + win + ' hours away, so it can’t be moved online. Please call ' + phoneLink + '.</div>');
+    } else if (!a.canCancel && a.status === 'upcoming') {
+      actions = '<div class="hint">This appointment can’t be changed online anymore. Please call ' + phoneLink + '.</div>';
+    }
+    var panel = '';
+    if (open && open.mode === 'cancel') {
+      var fee = esc(fmtMoney(a.feeCents / 100));
+      panel = '<div class="policy-note" style="margin-top:12px"><b>Cancel this appointment?</b> ' +
+        (a.feePaid ? (a.canReschedule ? 'It is at least ' + win + ' hours away, so your ' + fee + ' booking fee will be refunded to the card you paid with.'
+          : 'It is less than ' + win + ' hours away, so the ' + fee + ' booking fee is kept.') : 'No booking fee is charged for this appointment.') + '</div>' +
+        (m.err ? notice('error', esc(m.err)) : '') +
+        '<div class="row-actions"><button type="button" class="btn btn-primary btn-sm" data-action="mg-cancel" data-id="' + esc(a.id) + '"' + (m.busy ? ' disabled' : '') + '>' + (m.busy ? 'Cancelling…' : 'Yes, cancel appointment') + '</button>' +
+        '<button type="button" class="btn btn-ghost btn-sm" data-action="mg-close">Keep appointment</button></div>';
+    } else if (open && open.mode === 'reschedule') {
+      var body;
+      if (m.availLoading || !m.avail) body = '<div class="loading-row">' + spinner() + '<span>Checking open times…</span></div>';
+      else if (!m.avail.some(function (x) { return x.slots.length; })) body = '<div class="empty-note">No open times with ' + esc(a.barber) + ' in the next few weeks. Please call ' + phoneLink + '.</div>';
+      else {
+        var row = '<div class="day-row" role="group" aria-label="Choose a new day">' + m.avail.map(function (x) {
+          var p = isoParts(x.date), on = m.date === x.date;
+          return '<button type="button" class="day-btn" data-action="mg-date" data-date="' + esc(x.date) + '" aria-pressed="' + on + '" aria-label="' + esc(fmtDateLong(x.date)) + '"' + (x.slots.length ? '' : ' disabled') + '>' +
+            '<span class="dow">' + DOW3[dowOf(x.date)] + '</span><span class="dom">' + p.d + '</span><span class="mon">' + MON_EN[p.m - 1].slice(0, 3) + '</span></button>';
+        }).join('') + '</div>';
+        var day = m.avail.filter(function (x) { return x.date === m.date; })[0];
+        var slots = day && day.slots.length ? '<div class="slot-grid" role="group" aria-label="Choose a new time">' + day.slots.map(function (s) {
+          return '<button type="button" class="slot-btn num" data-action="mg-time" data-time="' + esc(s.time) + '" aria-pressed="' + (m.time === s.time) + '">' + esc(fmtTime(s.time)) + '</button>';
+        }).join('') + '</div>' : '<div class="empty-note">Pick a day above.</div>';
+        body = row + (m.date ? '<div class="cat-heading" style="margin-top:4px">' + esc(fmtDateLong(m.date)) + '</div>' : '') + slots;
+      }
+      panel = '<div style="margin-top:12px"><div class="cat-heading">Pick a new time with ' + esc(a.barber) + '</div>' + body +
+        (m.err ? notice('error', esc(m.err)) : '') +
+        '<div class="row-actions"><button type="button" class="btn btn-primary btn-sm" data-action="mg-move" data-id="' + esc(a.id) + '"' + (m.date && m.time && !m.busy ? '' : ' disabled') + '>' + (m.busy ? 'Moving…' : 'Move my appointment') + '</button>' +
+        '<button type="button" class="btn btn-ghost btn-sm" data-action="mg-close">Never mind</button></div></div>';
+    }
+    return '<div class="cart-item" data-appt="' + esc(a.id) + '">' + head + actions + panel + '</div>';
+  }
+  A['mg-open'] = function (el) {
+    var m = S.mg, id = el.getAttribute('data-id'), mode = el.getAttribute('data-k'), a = mgFind(id); if (!m || !a) return;
+    m.open = { id: id, mode: mode }; m.date = null; m.time = null; m.avail = null; m.err = ''; m.flash = null; m.busy = false;
+    if (mode === 'reschedule') {
+      m.availLoading = true;
+      api('GET', '/api/availability?service=' + encodeURIComponent(a.serviceId) + '&barber=' + encodeURIComponent(a.barberId) + '&days=21').then(function (r) {
+        if (S.mg !== m || !m.open || m.open.id !== id) return;
+        m.availLoading = false;
+        if (r.ok) { m.avail = r.data.days; var first = m.avail.filter(function (x) { return x.slots.length; })[0]; if (first) m.date = first.date; }
+        else { m.avail = []; m.err = errMsg(r); }
+        render();
+      });
+    }
+    render();
+  };
+  A['mg-close'] = function () { var m = S.mg; if (!m) return; m.open = null; m.err = ''; render(); };
+  A['mg-date'] = function (el) { var m = S.mg; if (!m) return; m.date = el.getAttribute('data-date'); m.time = null; m.err = ''; render(); };
+  A['mg-time'] = function (el) { var m = S.mg; if (!m) return; m.time = el.getAttribute('data-time'); m.err = ''; render(); };
+  A['mg-cancel'] = function (el) {
+    var m = S.mg, id = el.getAttribute('data-id'), a = mgFind(id); if (!m || !a || m.busy) return;
+    m.busy = true; m.err = ''; render();
+    return api('POST', '/api/manage/cancel', { m: m.token, id: id }).then(function (r) {
+      if (S.mg !== m) return;
+      m.busy = false;
+      if (!r.ok) { m.err = errMsg(r); render(); return; }
+      var fee = fmtMoney(a.feeCents / 100), win = m.data.shop.cancelWindowHours;
+      m.flash = { kind: 'ok', text: r.data.refund ? 'Your appointment is cancelled. Your ' + fee + ' booking fee will be refunded to your card. Watch for an email.'
+        : r.data.feeKept ? 'Your appointment is cancelled. The ' + fee + ' booking fee is kept because it was less than ' + win + ' hours before your appointment.' : 'Your appointment is cancelled.' };
+      m.open = null; S.scrollTop = true;
+      return loadManage();
+    });
+  };
+  A['mg-move'] = function (el) {
+    var m = S.mg, id = el.getAttribute('data-id'), a = mgFind(id); if (!m || !a || m.busy || !m.date || !m.time) return;
+    m.busy = true; m.err = ''; render();
+    return api('POST', '/api/manage/reschedule', { m: m.token, id: id, date: m.date, time: m.time }).then(function (r) {
+      if (S.mg !== m) return;
+      m.busy = false;
+      if (!r.ok) {
+        m.err = errMsg(r);
+        if (r.data && r.data.code === 'slot_taken') {   // refresh the open times so the taken one disappears
+          m.time = null; m.availLoading = true; render();
+          return api('GET', '/api/availability?service=' + encodeURIComponent(a.serviceId) + '&barber=' + encodeURIComponent(a.barberId) + '&days=21').then(function (ar) {
+            m.availLoading = false; if (ar.ok) m.avail = ar.data.days; render();
+          });
+        }
+        render(); return;
+      }
+      m.flash = { kind: 'ok', text: 'Done. Your appointment moved to ' + fmtDateLong(m.date) + ' at ' + fmtTime(m.time) + '. Your booking fee stays with it. We emailed you the new time.' };
+      m.open = null; S.scrollTop = true;
+      return loadManage();
+    });
   };
 
   /* =====================================================================
@@ -1529,9 +1672,13 @@
     var svcName = {}, svcById = {}; st.services.forEach(function (s) { svcName[s.id] = s.name; svcById[s.id] = s; });
     var blockedSet = {}; st.blocked.forEach(function (b) { blockedSet[b.norm] = true; });
 
-    var refunds = st.bookings.filter(function (b) { return b.needsRefund; }).map(function (b) {
-      return notice('error', '<span><b>Refund needed:</b> ' + esc(b.customerName) + ' (' + esc(b.phone) + ') paid the booking fee for ' + esc(fmtDateShort(b.date)) + ' at ' + esc(fmtTime(b.time)) + ', but that time had already been taken. Refund it in your Stripe Dashboard, then mark it done. ' +
-        '<button type="button" class="btn-text" data-action="o-refund-done" data-id="' + esc(b.id) + '">Mark refunded</button></span>');
+    var conflicts = st.bookings.filter(function (b) { return b.conflict; }).map(function (b) {
+      return notice('error', '<span><b>Needs a new time:</b> ' + esc(b.customerName) + (b.contactName && b.contactName !== b.customerName ? ' (booked by ' + esc(b.contactName) + ')' : '') + ' &middot; ' + esc(b.phone) + ' &mdash; ' + esc(barberName[b.barberId] || 'barber') + ' on ' + esc(fmtDateShort(b.date)) + ' at ' + esc(fmtTime(b.time)) + ': ' + esc(CONFLICT_TEXT[b.conflict] || 'the schedule changed') + '. Move them so they keep their spot' + (b.feePaid ? ' and their booking fee' : '') + '.</span>' +
+        '<div class="appt-actions" style="margin-top:8px">' + contactLinks(b.phone, b.contactName || b.customerName, b.time, true) + '<button type="button" class="icon-btn" data-action="o-rs-open" data-id="' + esc(b.id) + '" data-k="banner">Reschedule</button></div>') + (O.rs && O.rs.id === b.id && O.rs.from === 'banner' ? '<div class="panel-card" style="margin:-6px 0 16px">' + rsPanel(b, 'banner') + '</div>' : '');
+    }).join('');
+    var refunds = st.bookings.filter(function (b) { return b.needsRefund && !b.refunded; }).map(function (b) {
+      return notice('error', '<span><b>Refund needed:</b> ' + esc(b.customerName) + (b.contactName && b.contactName !== b.customerName ? ' (booked by ' + esc(b.contactName) + ')' : '') + ' &middot; ' + esc(b.phone) + ' &mdash; ' + esc(fmtMoney((b.feeCents || 0) / 100)) + ' booking fee for ' + esc(fmtDateShort(b.date)) + ' at ' + esc(fmtTime(b.time)) + '. That appointment is cancelled, so the fee is due back to them.</span>' +
+        '<div class="appt-actions" style="margin-top:8px">' + contactLinks(b.phone, b.contactName || b.customerName, b.time, true) + refundControls(b) + '<button type="button" class="icon-btn" data-action="o-refund-done" data-id="' + esc(b.id) + '">Already refunded in Stripe</button></div>');
     }).join('');
     var mailWarn = st.system.email && st.system.email.failed > 0 ? notice('error', '<span><b>' + plural(st.system.email.failed, 'email', 'emails') + ' could not be sent.</b> See System status under Settings.</span>') : '';
 
@@ -1574,9 +1721,11 @@
         var norm = normPhone(a.phone);
         return '<div class="appt-card"><div class="appt-time num">' + esc(fmtTime(a.time)) + '</div><div class="appt-service">' + esc(svcName[a.serviceId] || '') + ' &middot; ' + esc(a.duration) + ' min</div>' +
           '<div class="appt-cust">' + esc(a.customerName) + '</div>' +
-          (a.phone ? '<div class="pick-meta"><a href="tel:' + esc(safeTel(a.phone)) + '">' + esc(a.phone) + '</a></div>' : '') +
+          (a.contactName && a.contactName !== a.customerName ? '<div class="pick-meta">Booked by ' + esc(a.contactName) + '</div>' : '') +
+          (a.phone ? '<div class="pick-meta">Client phone: <a href="tel:' + esc(safeTel(a.phone)) + '">' + esc(a.phone) + '</a></div><div class="appt-actions">' + contactLinks(a.phone, a.customerName, a.time) + '</div>' : '') +
           (a.email ? '<div class="pick-meta">' + esc(a.email) + '</div>' : '') +
           (a.notes ? '<div class="pick-meta">“' + esc(a.notes) + '”</div>' : '') +
+          (a.conflict ? '<div class="pick-meta" style="color:var(--error);font-weight:700">Needs a new time: ' + esc(CONFLICT_TEXT[a.conflict] || 'the schedule changed') + '</div>' : '') +
           '<div class="pick-meta">' + (a.source === 'owner' ? 'Added by you' : 'Booked online') + ' &middot; ' + (a.feePaid ? 'fee paid' : 'no fee') + '</div>' +
           '<span class="pill pill-' + esc(a.status) + '">' + esc(a.status.replace('-', ' ')) + '</span>' +
           (a.status === 'upcoming' ? '<div class="appt-actions">' +
@@ -1585,6 +1734,8 @@
             (O.ask === 'cancel:' + a.id
               ? '<span class="pick-meta" style="align-self:center">Cancel this booking?</span><button type="button" class="icon-btn danger" data-action="o-status" data-id="' + esc(a.id) + '" data-k="cancelled">Yes, cancel</button><button type="button" class="icon-btn" data-action="o-ask" data-k="">Keep</button>'
               : '<button type="button" class="icon-btn" data-action="o-ask" data-k="cancel:' + esc(a.id) + '">Cancel</button>') + '</div>' : '') +
+          ((a.status === 'upcoming' || a.status === 'no-show') ? '<div class="appt-actions"><button type="button" class="icon-btn" data-action="o-rs-open" data-id="' + esc(a.id) + '" data-k="card">Reschedule</button></div>' + rsPanel(a, 'card') : '') +
+          (a.feePaid && a.feeCents > 0 ? '<div class="appt-actions">' + refundControls(a) + '</div>' : '') +
           (a.phone ? '<div class="appt-actions">' + (blockedSet[norm]
             ? '<span class="pick-meta" style="font-weight:700">Blocked from booking online</span>'
             : '<button type="button" class="icon-btn" data-action="o-block-phone" data-id="' + esc(a.phone) + '" data-k="' + esc(a.customerName) + '">Block this number</button>') + '</div>' : '') +
@@ -1592,8 +1743,94 @@
       }).join('') : '<div class="empty-note" style="padding:4px 0">No appointments.</div>') + '</div>';
     }).join('') + '</div>';
 
-    return refunds + mailWarn + flashHtml('today') + stats + breakdown + toolbar + (O.naOpen ? newApptPanel() : '') + strip + board;
+    return conflicts + refunds + mailWarn + flashHtml('today') + stats + breakdown + toolbar + (O.naOpen ? newApptPanel() : '') + strip + board;
   }
+  /* ---- owner: move a client to another time / barber (fee goes with them) ---- */
+  var CONFLICT_TEXT = { day_off: 'the barber is off that day', time_off: 'the barber blocked that time', outside_hours: 'it is outside the barber’s hours', shop_closed: 'the shop is closed then', barber_removed: 'that barber is no longer on the team' };
+  function findBooking(id) { return O.st.bookings.filter(function (b) { return b.id === id; })[0]; }
+  function rsPanel(a, from) {
+    var rs = O.rs; if (!rs || rs.id !== a.id || rs.from !== from) return '';
+    var chips = '<div class="seg-row" role="group" aria-label="Barber">' +
+      O.st.barbers.map(function (b) { return '<button type="button" class="seg-btn" data-action="o-rs-barber" data-k="' + esc(b.id) + '" aria-pressed="' + (rs.barberId === b.id) + '">' + (b.id === a.barberId ? esc(b.name) + ' (same)' : esc(b.name)) + '</button>'; }).join('') +
+      '<button type="button" class="seg-btn" data-action="o-rs-barber" data-k="any" aria-pressed="' + (rs.barberId === 'any') + '">Any barber</button></div>';
+    var body;
+    if (rs.loading || !rs.avail) body = '<div class="loading-row">' + spinner() + '<span>Checking open times…</span></div>';
+    else if (!rs.avail.some(function (x) { return x.slots.length; })) body = '<div class="empty-note">No open times in the next 3 weeks for this choice. Try another barber.</div>';
+    else {
+      var row = '<div class="day-row" role="group" aria-label="Choose a day">' + rs.avail.map(function (x) {
+        var p = isoParts(x.date);
+        return '<button type="button" class="day-btn" data-action="o-rs-date" data-date="' + esc(x.date) + '" aria-pressed="' + (rs.date === x.date) + '" aria-label="' + esc(fmtDateLong(x.date)) + '"' + (x.slots.length ? '' : ' disabled') + '>' +
+          '<span class="dow">' + DOW3[dowOf(x.date)] + '</span><span class="dom">' + p.d + '</span><span class="mon">' + MON_EN[p.m - 1].slice(0, 3) + '</span></button>';
+      }).join('') + '</div>';
+      var day = rs.avail.filter(function (x) { return x.date === rs.date; })[0];
+      var slots = day && day.slots.length ? '<div class="slot-grid" role="group" aria-label="Choose a time">' + day.slots.map(function (s) {
+        return '<button type="button" class="slot-btn num" data-action="o-rs-time" data-time="' + esc(s.time) + '" data-barber="' + esc(s.barberId) + '" aria-pressed="' + (rs.time === s.time) + '">' + esc(fmtTime(s.time)) + '</button>';
+      }).join('') + '</div>' : '<div class="empty-note">Pick a day above.</div>';
+      body = row + (rs.date ? '<div class="cat-heading" style="margin-top:4px">' + esc(fmtDateLong(rs.date)) + '</div>' : '') + slots;
+    }
+    return '<div class="rs-panel" style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line-strong)"><div class="cat-heading">Move ' + esc(a.customerName) + ' to…</div>' + chips + body +
+      (a.email ? checkbox('rs.email', 'Email ' + esc(a.customerName.split(' ')[0]) + ' the new time', true, 'data-change="o-rs-email"') : '<div class="hint">No email on file. Call or text them the new time.</div>') +
+      '<div class="hint">' + (a.feePaid && a.feeCents > 0 ? 'Their ' + esc(fmtMoney(a.feeCents / 100)) + ' booking fee moves with them. They pay nothing more and lose nothing.' : 'No booking fee was charged for this appointment.') + '</div>' +
+      (rs.err ? notice('error', esc(rs.err)) : '') +
+      '<div class="appt-actions"><button type="button" class="btn btn-primary btn-sm" data-action="o-rs-move" data-id="' + esc(a.id) + '"' + (rs.date && rs.time && !rs.busy ? '' : ' disabled') + '>' + (rs.busy ? 'Moving…' : 'Move appointment') + '</button>' +
+      '<button type="button" class="icon-btn" data-action="o-rs-close">Never mind</button></div></div>';
+  }
+  function rsLoad() {
+    var rs = O.rs, a = rs && findBooking(rs.id); if (!a) return;
+    rs.loading = true; rs.avail = null; rs.date = null; rs.time = null; rs.err = '';
+    render();
+    return api('GET', '/api/availability?service=' + encodeURIComponent(a.serviceId) + '&barber=' + encodeURIComponent(rs.barberId) + '&days=21', undefined, { role: 'owner' }).then(function (r) {
+      if (O.rs !== rs) return;
+      rs.loading = false;
+      if (r.ok) { rs.avail = r.data.days; var f = rs.avail.filter(function (x) { return x.slots.length; })[0]; if (f) rs.date = f.date; } else { rs.avail = []; rs.err = errMsg(r); }
+      render();
+    });
+  }
+  A['o-rs-open'] = function (el) {
+    var id = el.getAttribute('data-id'), a = findBooking(id); if (!a) return;
+    O.ask = ''; delete F['rs.email'];
+    O.rs = { id: id, from: el.getAttribute('data-k') || 'card', barberId: a.barberId, avail: null, loading: true, date: null, time: null, slotBarber: null, busy: false, err: '' };
+    return rsLoad();
+  };
+  A['o-rs-close'] = function () { O.rs = null; render(); };
+  A['o-rs-barber'] = function (el) { if (!O.rs) return; O.rs.barberId = el.getAttribute('data-k'); return rsLoad(); };
+  A['o-rs-date'] = function (el) { if (!O.rs) return; O.rs.date = el.getAttribute('data-date'); O.rs.time = null; O.rs.err = ''; render(); };
+  A['o-rs-time'] = function (el) { if (!O.rs) return; O.rs.time = el.getAttribute('data-time'); O.rs.slotBarber = el.getAttribute('data-barber'); O.rs.err = ''; render(); };
+  A['o-rs-email'] = function () { /* value is kept in F['rs.email'] */ };
+  A['o-rs-move'] = function (el) {
+    var rs = O.rs, id = el.getAttribute('data-id'), a = findBooking(id); if (!rs || !a || rs.busy || !rs.date || !rs.time) return;
+    rs.busy = true; rs.err = ''; render();
+    var emailClient = !!a.email && fv('rs.email', true);
+    return api('POST', '/api/owner/bookings/' + encodeURIComponent(id) + '/reschedule', { barberId: rs.barberId === 'any' ? (rs.slotBarber || 'any') : rs.barberId, date: rs.date, time: rs.time, emailClient: emailClient }, { role: 'owner' }).then(function (r) {
+      if (O.rs !== rs) return;
+      rs.busy = false;
+      if (r.status === 401) return;
+      if (!r.ok) { rs.err = errMsg(r); if (r.data && r.data.code === 'slot_taken') return rsLoad(); render(); return; }
+      var name = a.customerName;
+      O.rs = null; delete F['rs.email'];
+      setFlash('today', 'ok', 'Moved ' + name + ' to ' + fmtDateLong(rs.date) + ' at ' + fmtTime(rs.time) + '. Their booking fee stays with them.' + (r.data.emailed ? ' We emailed them the new time.' : ' Remember to tell them the new time.'));
+      return reloadOwner();
+    });
+  };
+  // one tap to call or text a client (owner only; barbers and the TV never see phone numbers)
+  function contactLinks(phone, name, time, plain) {
+    var tel = safeTel(phone); if (!tel) return '';
+    if (plain) return '<a class="icon-btn" href="tel:' + esc(tel) + '" aria-label="Call ' + esc(name) + '">Call</a><a class="icon-btn" href="sms:' + esc(tel) + '" aria-label="Text ' + esc(name) + '">Text</a>';
+    var msg = 'Hi ' + String(name || '').trim().split(/\s+/)[0] + ', this is ' + shopName() + '. Your appointment was at ' + fmtTime(time) + '. Are you on your way?';
+    return '<a class="icon-btn" href="tel:' + esc(tel) + '" aria-label="Call ' + esc(name) + '">Call</a>' +
+      '<a class="icon-btn" href="sms:' + esc(tel) + '?&amp;body=' + esc(encodeURIComponent(msg)) + '" aria-label="Text ' + esc(name) + '">Text</a>';
+  }
+  function refundControls(b) {
+    if (!b.feePaid || b.refunded || !(b.feeCents > 0)) return b.refunded ? '<span class="pill pill-completed">Fee refunded</span>' : '';
+    var amt = fmtMoney(b.feeCents / 100);
+    return O.ask === 'refund:' + b.id
+      ? '<span class="pick-meta" style="align-self:center">Refund ' + esc(amt) + ' to their card now?</span><button type="button" class="icon-btn danger" data-action="o-refund" data-id="' + esc(b.id) + '">Yes, refund ' + esc(amt) + '</button><button type="button" class="icon-btn" data-action="o-ask" data-k="">Keep</button>'
+      : '<button type="button" class="icon-btn" data-action="o-ask" data-k="refund:' + esc(b.id) + '">Refund ' + esc(amt) + '</button>';
+  }
+  A['o-refund'] = function (el) {
+    var id = el.getAttribute('data-id'); O.ask = '';
+    return oCall('today', 'POST', '/api/owner/bookings/' + encodeURIComponent(id) + '/refund', {}, 'Refunded through Stripe. The customer has been emailed.');
+  };
   A['o-refund-done'] = function (el) { return oCall('today', 'POST', '/api/owner/bookings/' + encodeURIComponent(el.getAttribute('data-id')) + '/refund-done', {}, 'Marked as refunded.'); };
   A['o-date'] = function (el) { O.date = el.getAttribute('data-k'); render(); };
   A['o-date-step'] = function (el) { O.date = addDaysISO(O.date || O.st.today, parseInt(el.getAttribute('data-k'), 10)); render(); };
@@ -1695,16 +1932,21 @@
     });
   };
 
+  // Days Working toggles are a draft until "Save changes" is pressed (they save together with the custom hours)
+  function curDaysOff(b) { return F['dw.' + b.id] !== undefined ? F['dw.' + b.id] : (b.daysOff || []); }
+  function hasUnsaved(b) { return Object.keys(F).some(function (k) { return k === 'dw.' + b.id || k.indexOf('bh.' + b.id + '.') === 0; }); }
   function teamCard(b) {
     var open = O.manage === b.id, inv = O.invites[b.id], photo = b.photo ? b.photo.url : null;
     var days = DOW3.map(function (dn, i) {
-      var off = (b.daysOff || []).indexOf(i) !== -1;
+      var off = curDaysOff(b).indexOf(i) !== -1;
       return '<button type="button" class="day-toggle" data-action="o-day" data-id="' + esc(b.id) + '" data-k="' + i + '" aria-pressed="' + (!off) + '" aria-label="' + DOW_EN[i] + (off ? ' (off)' : ' (working)') + '">' + dn.charAt(0) + '</button>';
     }).join('');
     var head = '<div class="tcard-head">' + avatarHtml(b.name, photo) + '<div class="tcard-id"><div class="pick-name">' + esc(b.name) + '</div><div class="pick-meta">' + esc(b.title) + '</div><div style="margin-top:6px">' + statusPill(b) + '</div></div>' +
       '<button type="button" class="btn btn-ghost btn-sm" data-action="o-manage" data-id="' + esc(b.id) + '" aria-expanded="' + open + '">' + (open ? 'Close' : 'Manage') + '</button></div>';
     var schedule = '<div class="tcard-row"><div><span class="lbl">Days working</span><div class="day-toggle-row">' + days + '</div></div>' +
       '<div><span class="lbl">Language</span><div class="lang-mini-row"><button type="button" class="lang-mini" data-action="o-blang" data-id="' + esc(b.id) + '" data-k="en" aria-pressed="' + (b.lang !== 'es') + '">EN</button><button type="button" class="lang-mini" data-action="o-blang" data-id="' + esc(b.id) + '" data-k="es" aria-pressed="' + (b.lang === 'es') + '">ES</button></div></div></div>';
+    schedule += '<div class="tcard-row save-row"><button type="button" class="btn btn-primary btn-sm" data-action="o-save-changes" data-id="' + esc(b.id) + '">Save changes</button>' +
+      (hasUnsaved(b) ? '<span class="pick-meta">Unsaved changes</span>' : '') + '</div>' + flashHtml('sv:' + b.id);
     var login = '<div class="tcard-row"><form data-submit="o-barber-email" data-id="' + esc(b.id) + '" style="flex:1;min-width:220px" novalidate><span class="lbl">Sign-in link &amp; email</span>' +
       '<div class="invite-line"><input id="' + fid('be.' + b.id) + '" type="email" data-f="be.' + esc(b.id) + '" value="' + esc(fv('be.' + b.id, b.email || '')) + '" placeholder="' + esc(b.name) + '’s email (optional)" autocomplete="off" aria-label="' + esc(b.name) + '’s email"><button type="submit" class="btn btn-ghost btn-sm">Save email</button></div></form>' +
       '<div><span class="lbl">Login</span><div class="row-actions" style="margin:0">' +
@@ -1721,9 +1963,10 @@
   A['o-day'] = function (el) {
     var id = el.getAttribute('data-id'), dow = parseInt(el.getAttribute('data-k'), 10);
     var b = O.st.barbers.filter(function (x) { return x.id === id; })[0]; if (!b) return;
-    var days = (b.daysOff || []).slice(), i = days.indexOf(dow);
+    var days = curDaysOff(b).slice(), i = days.indexOf(dow);
     if (i === -1) days.push(dow); else days.splice(i, 1);
-    return oCall('team', 'PATCH', '/api/owner/barbers/' + encodeURIComponent(id), { daysOff: days }, b.name + '’s days updated.');
+    F['dw.' + id] = days; delete O.fl['sv:' + id];
+    render();
   };
   A['o-blang'] = function (el) { return oCall('team', 'PATCH', '/api/owner/barbers/' + encodeURIComponent(el.getAttribute('data-id')), { lang: el.getAttribute('data-k') }, 'Language updated.'); };
   SUBMIT['o-barber-email'] = function (form) {
@@ -1760,12 +2003,15 @@
   }
   function manageBlock(b) {
     var today = O.st.today, fk = 'm:' + b.id, custom = !!b.useCustomHours, shopH = O.st.shop.hours;
-    var hrsRows = custom ? '<div class="hours-grid-mini">' + DOW3.map(function (dn, i) {
+    var offDays = curDaysOff(b);
+    var offNames = offDays.slice().sort(function (x, y) { return x - y; }).map(function (i) { return DOW3[i]; });
+    var hrsRows = custom ? (offNames.length ? '<p class="pick-meta" style="margin:0 0 8px">Days off (' + esc(offNames.join(', ')) + ') are hidden. Turn a day on under &ldquo;Days working&rdquo; to set its hours.</p>' : '') + '<div class="hours-grid-mini">' + DOW3.map(function (dn, i) {
+      if (offDays.indexOf(i) !== -1) return '';
       var h = b.hours && b.hours[i] ? b.hours[i] : null;
       return '<div class="hours-row"><b>' + dn + '</b><span class="hrs">' +
         selectHtml('bh.' + b.id + '.' + i + '.o', hourOpts(0, 23, 'Shop hours'), h ? h.open : '', 'aria-label="' + DOW_EN[i] + ' opens"') + '<span>to</span>' +
         selectHtml('bh.' + b.id + '.' + i + '.c', hourOpts(1, 24, 'Shop hours'), h ? h.close : '', 'aria-label="' + DOW_EN[i] + ' closes"') + '</span><span class="pick-meta">' + (shopH && shopH[i] ? 'Shop: ' + fmtHourShort(shopH[i].open) + '–' + fmtHourShort(shopH[i].close) : 'Shop closed') + '</span></div>';
-    }).join('') + '</div><button type="button" class="btn btn-primary btn-sm" data-action="o-save-hours" data-id="' + esc(b.id) + '">Save custom hours</button>' : '';
+    }).join('') + '</div>' : '';
     var offs = (b.timeOff || []).map(function (o) {
       return '<div class="off-item"><span>' + esc(o.date === today ? 'Today' : fmtDateShort(o.date)) + ' &middot; ' + esc(o.allDay ? 'All day' : fmtTime(o.from) + '–' + fmtTime(o.to)) + '</span><button type="button" class="btn-text" data-action="o-rm-off" data-id="' + esc(o.id) + '" data-k="' + esc(b.id) + '">Remove</button></div>';
     }).join('') || '<div class="empty-note" style="padding:6px 0">Nothing blocked right now.</div>';
@@ -1800,24 +2046,37 @@
       body.hours = h;
     }
     delete F['mc.' + id];
-    return oCall('m:' + id, 'PATCH', '/api/owner/barbers/' + encodeURIComponent(id), body, on ? 'Custom hours on. Adjust the days below and save.' : 'Using the shop’s hours.');
+    return oCall('m:' + id, 'PATCH', '/api/owner/barbers/' + encodeURIComponent(id), body, on ? 'Custom hours on. Set the hours below, then press Save changes.' : 'Using the shop’s hours.');
   };
-  A['o-save-hours'] = function (el) {
-    var id = el.getAttribute('data-id'), hours = {}, bad = '';
-    for (var d = 0; d < 7; d++) {
-      var o = fv('bh.' + id + '.' + d + '.o', null), c = fv('bh.' + id + '.' + d + '.c', null);
-      var b = O.st.barbers.filter(function (x) { return x.id === id; })[0], cur = b && b.hours && b.hours[d];
-      if (o === null) o = cur ? cur.open : ''; if (c === null) c = cur ? cur.close : '';
-      if (o === '' && c === '') hours[d] = null;
-      else if (o === '' || c === '') bad = DOW_EN[d] + ': choose both an opening and a closing time (or leave both on “Shop hours”).';
-      else if (+c <= +o) bad = DOW_EN[d] + ': closing time must be after opening time.';
-      else hours[d] = { open: +o, close: +c };
+  A['o-save-changes'] = function (el) {
+    var id = el.getAttribute('data-id'), b = O.st.barbers.filter(function (x) { return x.id === id; })[0]; if (!b) return;
+    var off = curDaysOff(b), body = { daysOff: off }, bad = '';
+    if (b.useCustomHours) {
+      var hours = {};
+      for (var d = 0; d < 7; d++) {
+        var cur = b.hours && b.hours[d];
+        if (off.indexOf(d) !== -1) { hours[d] = cur || null; continue; }   // day is off: its hours are hidden, keep what was stored
+        var o = fv('bh.' + id + '.' + d + '.o', null), c = fv('bh.' + id + '.' + d + '.c', null);
+        if (o === null) o = cur ? cur.open : ''; if (c === null) c = cur ? cur.close : '';
+        if (o === '' && c === '') hours[d] = null;
+        else if (o === '' || c === '') bad = DOW_EN[d] + ': choose both an opening and a closing time (or leave both on “Shop hours”).';
+        else if (+c <= +o) bad = DOW_EN[d] + ': closing time must be after opening time.';
+        else hours[d] = { open: +o, close: +c };
+      }
+      body.useCustomHours = true; body.hours = hours;
     }
-    if (bad) { setFlash('m:' + id, 'error', bad); render(); return; }
-    clearKeys('bh.' + id + '.');
-    return oCall('m:' + id, 'PATCH', '/api/owner/barbers/' + encodeURIComponent(id), { useCustomHours: true, hours: hours }, 'Custom hours saved.');
+    if (bad) { setFlash('sv:' + id, 'error', bad); render(); return; }
+    return oCall('sv:' + id, 'PATCH', '/api/owner/barbers/' + encodeURIComponent(id), body, 'Saved. ' + b.name + '’s working days' + (b.useCustomHours ? ' and custom hours' : '') + ' are updated.').then(function (r) {
+      if (r && r.ok) {
+        delete F['dw.' + id]; clearKeys('bh.' + id + '.');
+        var n = O.st.bookings.filter(function (x) { return x.barberId === id && x.conflict; }).length;
+        if (n) setFlash('sv:' + id, 'error', 'Saved. Heads up: ' + plural(n, 'appointment', 'appointments') + ' with ' + b.name + ' no longer fit this schedule. Open the Bookings tab, see “Needs a new time”, and move them so they keep their spot.');
+        render();
+      }
+    });
   };
   A['o-off-mode'] = function (el) { F['mo.' + el.getAttribute('data-id') + '.all'] = el.getAttribute('data-k') === 'all'; render(); };
+  function conflictAfter(id) { return O.st.bookings.filter(function (x) { return x.barberId === id && x.conflict; }).length; }
   A['o-add-off'] = function (el) {
     var id = el.getAttribute('data-id'), all = fv('mo.' + id + '.all', true), date = fv('mo.' + id + '.date'), from = fv('mo.' + id + '.from'), to = fv('mo.' + id + '.to'), fk = 'm:' + id;
     if (!date) { setFlash(fk, 'error', 'Pick a date first.'); render(); return; }
@@ -1826,7 +2085,10 @@
       if (from >= to) { setFlash(fk, 'error', 'End time must be after the start time.'); render(); return; }
     }
     clearKeys('mo.' + id + '.');
-    return oCall(fk, 'POST', '/api/owner/barbers/' + encodeURIComponent(id) + '/timeoff', all ? { date: date, allDay: true } : { date: date, allDay: false, from: from, to: to }, 'Time blocked.');
+    return oCall(fk, 'POST', '/api/owner/barbers/' + encodeURIComponent(id) + '/timeoff', all ? { date: date, allDay: true } : { date: date, allDay: false, from: from, to: to }, 'Time blocked.').then(function (r) {
+      var n = r && r.ok ? conflictAfter(id) : 0;
+      if (n) { setFlash(fk, 'error', 'Time blocked. Heads up: ' + plural(n, 'appointment', 'appointments') + ' fall in the time you blocked. Open the Bookings tab, see “Needs a new time”, and move them.'); render(); }
+    });
   };
   A['o-rm-off'] = function (el) { return oCall('m:' + el.getAttribute('data-k'), 'DELETE', '/api/owner/timeoff/' + encodeURIComponent(el.getAttribute('data-id')), undefined, 'Time off removed.'); };
   A['o-rm-barber'] = function (el) {
@@ -1902,7 +2164,7 @@
     var list = q ? all.filter(function (c) { return (c.name + ' ' + c.phone + ' ' + (c.email || '')).toLowerCase().indexOf(q) !== -1; }) : all;
     var rows = list.map(function (c) {
       return '<tr' + (c.blocked ? ' style="opacity:.6"' : '') + '><td class="wrap">' + esc(c.name) + (c.blocked ? ' <span class="pick-meta">(blocked)</span>' : '') + '</td>' +
-        '<td class="nw num">' + esc(c.phone) + '</td><td class="wrap">' + esc(c.email || '') + '</td><td class="num">' + esc(c.visits) + '</td><td class="nw">' + esc(c.last ? fmtDateShort(String(c.last).slice(0, 10)) : '') + '</td>' +
+        '<td class="nw num"><a href="tel:' + esc(safeTel(c.phone)) + '">' + esc(c.phone) + '</a> <a class="btn-text" href="sms:' + esc(safeTel(c.phone)) + '">Text</a></td><td class="wrap">' + esc(c.email || '') + '</td><td class="num">' + esc(c.visits) + '</td><td class="nw">' + esc(c.last ? fmtDateShort(String(c.last).slice(0, 10)) : '') + '</td>' +
         '<td class="c"><label class="tbl-check"><input type="checkbox" data-change="o-optin" data-phone="' + esc(c.phone) + '"' + (c.optIn ? ' checked' : '') + ' aria-label="OK to text ' + esc(c.name) + '"></label></td>' +
         '<td class="nw">' + (c.blocked
           ? '<button type="button" class="btn-text" data-action="o-unblock" data-id="' + esc(c.norm) + '">Unblock</button>'
@@ -1955,6 +2217,9 @@
     var email = '<form class="panel-card" data-submit="o-set-email" novalidate><h3>Booking alerts</h3><p class="panel-sub">Every new online booking is emailed to this address.</p>' + flashHtml('email') +
       inp('s.ownerEmail', { label: 'Your email', def: shop.ownerEmail, type: 'email', attrs: 'autocomplete="email" inputmode="email"' }) +
       '<div class="row-actions" style="margin-top:0"><button type="submit" class="btn btn-primary btn-sm">Save email</button><button type="button" class="btn btn-ghost btn-sm" data-action="o-test-email">Send test email</button></div></form>';
+    var review = '<form class="panel-card" data-submit="o-set-review" novalidate><h3>Google review requests</h3><p class="panel-sub">About two hours after you mark an appointment Completed, the client gets one friendly email asking for a Google review (never more than one every 30 days, and only between 9 AM and 8 PM). Paste your Google review link below. Leave it blank to turn review requests off.</p>' + flashHtml('review') +
+      inp('s.review', { label: 'Google review link', def: shop.googleReviewUrl || '', type: 'url', ph: 'https://g.page/r/…/review', attrs: 'inputmode="url" autocomplete="off" maxlength="300"', hint: 'In Google Business Profile, choose “Ask for reviews” and copy the link.' }) +
+      '<div class="row-actions" style="margin-top:0"><button type="submit" class="btn btn-primary btn-sm">Save review link</button></div></form>';
     var svc = '<form class="panel-card" data-submit="o-set-services" novalidate><h3>Services &amp; in-store prices</h3><p class="panel-sub">Prices are paid at the shop, never online. Clients see them only at checkout, as &ldquo;Due in store&rdquo;. Online, each appointment is charged just the booking fee. The minutes set how long the chair is blocked.</p>' + flashHtml('svc') + '<div class="settings-list">' + st.services.map(function (s) {
       return '<div class="settings-item"><span>' + esc(s.name) + (s.note ? ' <span class="pick-meta">(' + esc(s.note) + ')</span>' : '') + '</span><span class="svc-fields">' +
         '<input type="text" inputmode="numeric" id="' + fid('sv.' + s.id + '.d') + '" data-f="sv.' + esc(s.id) + '.d" value="' + esc(fv('sv.' + s.id + '.d', s.duration)) + '" aria-label="' + esc(s.name) + ' minutes" maxlength="3"> min ' +
@@ -1978,7 +2243,7 @@
       row('Booking fee required', null, sys.requirePayment ? 'Yes' : 'No') + row('Site address', null, '<span class="mono">' + esc(sys.baseUrl || '') + '</span>') + '</div>';
     var audit = '<div class="panel-card"><h3>Recent security log</h3><p class="panel-sub">The last 30 sign-ins, changes and exports.</p><div class="tbl-wrap"><table class="breakdown-table"><thead><tr><th>When</th><th>Who</th><th>What</th><th>Detail</th><th>From</th></tr></thead><tbody>' +
       (st.audit || []).map(function (a) { return '<tr><td class="nw">' + esc(fmtStamp(a.ts)) + '</td><td class="nw">' + esc(a.actor) + '</td><td class="nw">' + esc(String(a.action).replace(/_/g, ' ')) + '</td><td class="wrap">' + esc(a.detail) + '</td><td class="nw mono">' + esc(a.ip) + '</td></tr>'; }).join('') + '</tbody></table></div></div>';
-    return '<div class="settings-grid"><div>' + info + hours + policy + email + '</div><div>' + svc + board + pw + system + '</div></div>' + audit;
+    return '<div class="settings-grid"><div>' + info + hours + policy + email + review + '</div><div>' + svc + board + pw + system + '</div></div>' + audit;
   }
   A['o-hours-render'] = function () { render(); };
   SUBMIT['o-set-info'] = function () {
@@ -2001,6 +2266,9 @@
     if (!/^\d{1,3}$/.test(fee) || +fee > 500) { setFlash('policy', 'error', 'The booking fee must be a whole number of dollars from 0 to 500.'); render(); return; }
     if (!/^\d{1,3}$/.test(win) || +win > 168) { setFlash('policy', 'error', 'The cancel window must be from 0 to 168 hours.'); render(); return; }
     return oCall('policy', 'PATCH', '/api/owner/settings', { bookingFee: +fee, cancelWindowHours: +win, marketingPreTick: !!fv('s.pretick', sh.marketingPreTick), remindersEnabled: !!fv('s.reminders', sh.remindersEnabled) }, 'Policies saved.').then(function (r) { if (r && r.ok) { ['s.fee', 's.window', 's.pretick', 's.reminders'].forEach(function (k) { delete F[k]; }); loadPublic(); } });
+  };
+  SUBMIT['o-set-review'] = function () {
+    return oCall('review', 'PATCH', '/api/owner/settings', { googleReviewUrl: fv('s.review', O.st.shop.googleReviewUrl || '').trim() }, fv('s.review', O.st.shop.googleReviewUrl || '').trim() ? 'Review link saved. Clients will be asked for a review after each completed visit.' : 'Review requests are off.').then(function (r) { if (r && r.ok) delete F['s.review']; });
   };
   SUBMIT['o-set-email'] = function () {
     return oCall('email', 'PATCH', '/api/owner/settings', { ownerEmail: fv('s.ownerEmail', O.st.shop.ownerEmail).trim() }, 'Email saved.').then(function (r) { if (r && r.ok) delete F['s.ownerEmail']; });
@@ -2064,6 +2332,8 @@
       if ((pay === 'success' || pay === 'cancel') && t) return { route: 'pay', kind: pay, token: t };
       var tok = bootQuery.get('staff');
       if (tok) return { route: 'staff', token: tok };
+      var mgTok = bootQuery.get('manage');
+      if (mgTok) return { route: 'manage', token: mgTok };
     }
     var h = location.hash.replace(/^#/, '');
     if (h === 'staff' || h === 'board' || h === 'owner') return { route: h };
@@ -2078,6 +2348,8 @@
     } else if (r.route === 'pay') {
       if (!S.pub) loadPublic().then(function () { if (S.route === 'pay') render(); });
       startPayReturn(r.kind, r.token);
+    } else if (r.route === 'manage') {
+      initManage(r.token);
     } else if (r.route === 'staff') {
       if (r.token) S.staff.token = r.token;
       initStaff();

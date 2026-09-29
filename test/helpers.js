@@ -15,6 +15,8 @@ function listen(server) { return new Promise((r) => server.listen(0, '127.0.0.1'
 
 async function startFakeStripe() {
   const sessions = [];
+  const refunds = [];
+  let refundFail = false;
   const server = http.createServer((req, res) => {
     let body = '';
     req.on('data', (c) => (body += c));
@@ -26,12 +28,20 @@ async function startFakeStripe() {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ id, object: 'checkout.session', url: `https://checkout.stripe.test/pay/${id}` }));
       }
+      if (req.method === 'POST' && req.url === '/v1/refunds') {
+        const params = Object.fromEntries(new URLSearchParams(body).entries());
+        if (refundFail) { res.writeHead(400, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ error: { message: 'Charge has already been refunded.', type: 'invalid_request_error' } })); }
+        const id = 're_test_' + (refunds.length + 1);
+        refunds.push({ id, idempotencyKey: req.headers['idempotency-key'], ...params });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ id, object: 'refund', status: 'succeeded', amount: +params.amount }));
+      }
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: { message: 'not found' } }));
     });
   });
   const port = await listen(server);
-  return { port, sessions, close: () => new Promise((r) => server.close(r)) };
+  return { port, sessions, refunds, setRefundFail(v) { refundFail = v; }, close: () => new Promise((r) => server.close(r)) };
 }
 
 async function startFakeMail() {
