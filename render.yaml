@@ -1,0 +1,30 @@
+# One-click setup for Render (https://render.com). Secrets marked sync:false are typed in by
+# YOU in Render's dashboard -- they are never stored in this file or sent through chat.
+services:
+  - type: web
+    name: barberchops-booking
+    runtime: node
+    plan: starter            # a paid plan is required for the persistent disk below (about $7/month)
+    buildCommand: npm ci --omit=dev
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    autoDeploy: true
+    disk:
+      name: barberchops-data
+      mountPath: /var/data   # the database and uploaded photos live here and survive restarts
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /var/data
+      - key: SHOP_TZ
+        value: America/New_York
+      - key: SETUP_KEY         # you type this in Render's page when it asks: a long random phrase (20+ characters), used once to create the owner login
+        sync: false
+      - key: REQUIRE_PAYMENT   # "false" = bookings are free to make until Stripe is connected. Change to "true" once Stripe is set up.
+        value: false
+      # Added later in Render's dashboard (Environment page), never here:
+      #   BASE_URL, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, MAIL_API_KEY, MAIL_FROM

@@ -1,0 +1,17 @@
+{
+  "name": "Barberchops",
+  "short_name": "Barberchops",
+  "description": "Book your chair at Barberchops, Massapequa NY",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#171410",
+  "theme_color": "#171410",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
